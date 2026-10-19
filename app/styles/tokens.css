@@ -1,0 +1,49 @@
+:root {
+  /* Colour — see DESIGN.md */
+  --canvas: #F2F4F5;
+  --surface: #FFFFFF;
+  --ink: #000000;
+  --ink-2: #1A1A1A;
+  --muted: #787574;
+  --faint: #A5A2A6;
+  --border: #E4E4E7;
+  --border-hover: #D4D4D8;
+  --divider: #F0F0F1;
+  --fill-soft: #F7F7F8;
+  --violet: #5433EB;
+  --violet-hover: #3F24C0;
+  --violet-wash: #EDE9FC;
+  --violet-border: #C9BEF5;
+  --violet-soft: #F6F4FE;
+  --green: #1F7A5A;
+  --green-wash: #E4EFDE;
+  --slate: #332F2D;
+  --slate-text: #B4AFAB;
+  --slate-faint: #7C7671;
+
+  /* Type */
+  --font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --track: -0.011em;
+  --track-tight: -0.035em;
+
+  /* Spacing (8px grid) */
+  --s1: 8px; --s2: 16px; --s3: 24px; --s4: 32px; --s6: 48px; --s8: 64px; --s10: 80px;
+  --gutter: 32px;
+  --max: 1200px;
+  --max-wide: 1360px;
+
+  /* Radius */
+  --r-pill: 9999px;
+  --r-card: 24px;
+  --r-card-sm: 20px;
+  --r-tile: 16px;
+  --r-chip: 10px;
+
+  /* Elevation */
+  --shadow-hover: 0 8px 24px rgba(0, 0, 0, .05);
+  --shadow-pop: 0 8px 24px rgba(0, 0, 0, .08);
+  --shadow-cta: 0 8px 28px rgba(69, 36, 219, .32);
+
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+@media (max-width: 640px) { :root { --gutter: 16px; } }
