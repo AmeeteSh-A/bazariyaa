@@ -1,116 +1,189 @@
-'use client';
+"use client";
 
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { useRouter } from 'next/navigation';
-import { PRODUCTS } from '@/data/products';
-import { GROCERY_CATEGORIES, GROCERY_PRODUCTS } from '@/data/grocery';
-import { inr } from '@/utils/format';
-import { ArrowIcon, MicIcon, SearchIcon } from './Icons';
+import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { Search } from "lucide-react";
 
-interface Suggestion { id: string; icon: string; title: string; meta: string; tag?: string; to: string; }
+type SearchResultItem = {
+  id: string;
+  name: string;
+  brand: string;
+  category: string;
+  price: string;
+  buy: number;
+};
 
-interface Props {
+type SearchApiResponse = {
+  query: string;
+  normalized_query: string;
+  exact: SearchResultItem[];
+  similar: SearchResultItem[];
+  associated: SearchResultItem[];
+};
+
+export default function SearchBar({
+  placeholder = "Search laptops, phones, milk, namkeen...",
+  initialValue = "",
+  variant = "global"
+}: {
   placeholder?: string;
-  size?: 'sm' | 'lg';
-  scope?: 'all' | 'grocery';
-  submitLabel?: string;
-  onSubmit?: (q: string) => void;
-}
-
-export function SearchBar({ placeholder = 'What are you shopping for today?', size = 'lg', scope = 'all', submitLabel, onSubmit }: Props) {
-  const [q, setQ] = useState('');
+  initialValue?: string;
+  variant?: "global" | "grocery";
+}) {
+  const [query, setQuery] = useState(initialValue);
+  const [results, setResults] = useState<SearchApiResponse | null>(null);
+  const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(-1);
+  const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
-  const listId = useId();
-  const blurT = useRef<number>();
 
-  // Live catalogue hits from /api/search (Supabase). Static showcase products below act as fallback.
-  const [live, setLive] = useState<Suggestion[]>([]);
+  // Close dropdown when clicking outside
   useEffect(() => {
-    const s = q.trim();
-    if (scope !== 'all' || s.length < 2) { setLive([]); return; }
-    const ctl = new AbortController();
-    const t = window.setTimeout(async () => {
-      try {
-        const res = await fetch('/api/search?q=' + encodeURIComponent(s), { signal: ctl.signal });
-        if (!res.ok) return;
-        const data = await res.json();
-        const rows: Array<{ id: string; name: string; brand?: string; price?: string; buy?: number }> = [...(data.exact ?? []), ...(data.similar ?? [])].slice(0, 5);
-        setLive(rows.map(r => ({ id: 'db-' + r.id, icon: '🔎', title: r.name, meta: [r.brand, r.price].filter(Boolean).join(' · '), tag: r.buy ? '👍 ' + r.buy + '%' : undefined, to: '/product/' + r.id })));
-      } catch { /* aborted or offline: keep static results */ }
-    }, 250);
-    return () => { clearTimeout(t); ctl.abort(); };
-  }, [q, scope]);
-
-  const results = useMemo<Suggestion[]>(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return [];
-    const out: Suggestion[] = [...live];
-    if (scope === 'all') {
-      PRODUCTS.filter(p => (p.name + ' ' + p.brand + ' ' + p.category).toLowerCase().includes(s)).slice(0, 4)
-        .forEach(p => out.push({ id: p.id, icon: p.icon, title: p.name, meta: p.brand + ' · ' + inr(p.price), tag: '👍 ' + p.recommended + '%', to: '/product/' + p.slug }));
+    function handleClickOutside(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
     }
-    GROCERY_PRODUCTS.filter(p => (p.brand + ' ' + p.name + ' ' + p.sub).toLowerCase().includes(s)).slice(0, scope === 'grocery' ? 5 : 2)
-      .forEach(p => out.push({ id: p.id, icon: p.emoji, title: p.brand + ' ' + p.name, meta: p.size + ' ' + p.unit + ' · ' + inr(p.price), tag: 'Grocery', to: '/grocery/' + p.cat }));
-    GROCERY_CATEGORIES.filter(c => c.name.toLowerCase().includes(s)).slice(0, 2)
-      .forEach(c => out.push({ id: 'c-' + c.id, icon: c.icon, title: c.name, meta: c.count + ' products', tag: 'Category', to: '/grocery/' + c.id }));
-    return out;
-  }, [q, scope, live]);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-  const go = (to?: string) => {
+  // Debounced API call for keystroke search
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length === 0) {
+      setResults(null);
+      setOpen(false);
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      setOpen(true);
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, {
+          signal: controller.signal
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setResults(data);
+        }
+      } catch (err: any) {
+        if (err?.name !== "AbortError") setResults(null);
+      } finally {
+        setLoading(false);
+      }
+    }, 180); // 180ms delay prevents spamming the database
+
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [query]);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!query.trim()) return;
     setOpen(false);
-    if (to) { router.push(to); return; }
-    if (onSubmit) { onSubmit(q); return; }
-    router.push(scope === 'grocery' ? '/grocery/search?q=' + encodeURIComponent(q) : results[0]?.to ?? '/');
-  };
+    
+    // Route to global or grocery search page based on where the bar is mounted
+    const basePath = variant === "grocery" ? "/grocery/search" : "/search";
+    router.push(`${basePath}?q=${encodeURIComponent(query.trim())}`);
+  }
 
-  const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(a + 1, results.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive(a => Math.max(a - 1, 0)); }
-    else if (e.key === 'Enter') { e.preventDefault(); go(results[active]?.to); }
-    else if (e.key === 'Escape') setOpen(false);
-  };
-
-  const showDrop = open && q.trim().length > 0;
+  const totalCount =
+    (results?.exact?.length || 0) +
+    (results?.similar?.length || 0) +
+    (results?.associated?.length || 0);
 
   return (
-    <div className={'search' + (size === 'sm' ? ' search--sm' : '')}>
-      <div className="search__bar">
-        <SearchIcon className="muted" />
+    <div ref={containerRef} className="relative w-full max-w-2xl z-50">
+      <form
+        onSubmit={handleSubmit}
+        className="flex w-full items-center rounded-full border border-slate-200 bg-white py-2.5 pl-4 pr-2 shadow-sm focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500"
+      >
+        <Search className="h-5 w-5 text-slate-400 mr-2" />
         <input
-          value={q}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => {
+            if (query.trim().length > 0) setOpen(true);
+          }}
           placeholder={placeholder}
-          aria-label={placeholder}
-          role="combobox"
-          aria-expanded={showDrop}
-          aria-controls={listId}
-          aria-autocomplete="list"
-          onChange={e => { setQ(e.target.value); setOpen(true); setActive(-1); }}
-          onFocus={() => setOpen(true)}
-          onBlur={() => { blurT.current = window.setTimeout(() => setOpen(false), 150); }}
-          onKeyDown={onKey}
+          className="flex-1 bg-transparent text-sm text-slate-900 outline-none"
         />
-        {size === 'lg' && (
-          <>
-            <button type="button" className="icon-btn" aria-label="Voice search" onClick={() => { setQ(scope === 'grocery' ? 'sunflower oil' : 'phone under 40000'); setOpen(true); }}><MicIcon className="muted" /></button>
-            {submitLabel
-              ? <button type="button" className="btn btn--primary" onClick={() => go()}>{submitLabel}</button>
-              : <button type="button" className="icon-btn" style={{ background: 'var(--violet)', borderColor: 'var(--violet)', color: '#fff' }} aria-label="Search" onClick={() => go()}><ArrowIcon /></button>}
-          </>
-        )}
-      </div>
-      {showDrop && (
-        <div className="search__drop" role="listbox" id={listId}>
-          <div className="search__label">Results</div>
-          {results.length === 0 && <div className="search__item"><span className="search__meta">No match — try a brand, a category or “oil”.</span></div>}
-          {results.map((r, i) => (
-            <button key={r.id} type="button" role="option" aria-selected={i === active} className="search__item" onMouseDown={e => e.preventDefault()} onClick={() => go(r.to)}>
-              <span className="search__ic">{r.icon}</span>
-              <span style={{ flex: 1, minWidth: 0 }}><span className="search__title">{r.title}</span><span className="search__meta">{r.meta}</span></span>
-              {r.tag && <span className="badge">{r.tag}</span>}
-            </button>
-          ))}
+        <button
+          type="submit"
+          className="ml-2 rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
+        >
+          Search
+        </button>
+      </form>
+
+      {open && query.trim().length > 0 && (
+        <div className="absolute left-0 right-0 top-full mt-2 max-h-[400px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+          {loading && !results && (
+            <div className="p-3 text-sm text-slate-500">Searching catalog...</div>
+          )}
+
+          {!loading && results && results.normalized_query !== query.trim().toLowerCase() && (
+            <div className="px-3 pb-2 text-xs font-medium text-indigo-600">
+              Showing results for "{results.normalized_query}"
+            </div>
+          )}
+
+          {!loading && totalCount === 0 && (
+            <div className="p-3 text-sm text-slate-500">No matches found.</div>
+          )}
+
+          {results && results.exact.length > 0 && (
+            <div className="mb-3">
+              <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600">
+                Exact Matches
+              </div>
+              {results.exact.slice(0, 5).map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/product/${encodeURIComponent(item.id)}`}
+                  onClick={() => setOpen(false)}
+                  className="flex items-center justify-between rounded-xl px-3 py-2 transition hover:bg-slate-50"
+                >
+                  <div className="min-w-0 flex-1 pr-4">
+                    <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
+                    <div className="text-xs text-slate-500">{item.category} · {item.price}</div>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700">
+                    Buy {item.buy}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+
+          {results && results.similar.length > 0 && (
+            <div className="mb-3">
+              <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-teal-700">
+                Similar & Alternatives
+              </div>
+              {results.similar.slice(0, 4).map((item) => (
+                <Link
+                  key={item.id}
+                  href={`/product/${encodeURIComponent(item.id)}`}
+                  onClick={() => setOpen(false)}
+                  className="flex items-center justify-between rounded-xl px-3 py-2 transition hover:bg-slate-50"
+                >
+                  <div className="min-w-0 flex-1 pr-4">
+                    <div className="truncate text-sm font-medium text-slate-800">{item.name}</div>
+                    <div className="text-xs text-slate-500">{item.category} · {item.price}</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
