@@ -62,6 +62,13 @@ export function normalizeAmazonData(raw: any, historyDoc: any): Product {
     price: parseBsonNumber(h.price)
   }));
 
+  let imgList: string[] = [];
+  if (Array.isArray(raw.images)) {
+    imgList = raw.images.map((img: any) => typeof img === 'string' ? img : img.link).filter(Boolean);
+  } else if (raw.main_image) {
+    imgList = [raw.main_image];
+  }
+
   return {
     id: String(id),
     buy: Math.floor(Math.random() * 20) + 80,
@@ -76,7 +83,7 @@ export function normalizeAmazonData(raw: any, historyDoc: any): Product {
     was: msrpVal > 0 ? `${raw.currency_code || 'AED'} ${msrpVal}` : undefined,
     trend: trend,
     cta: "view",
-    images: raw.main_image ? [raw.main_image] : [],
+    images: imgList,
     specs: specs,
     history: history
   };

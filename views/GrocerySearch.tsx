@@ -6,12 +6,21 @@ import { GroceryCard } from '@/components/GroceryCard';
 import { Modal } from '@/components/Modal';
 import { SearchBar } from '@/components/SearchBar';
 import { CheckIcon, ChevronRight, ClipIcon, ImageIcon, ListIcon, MicIcon, PinIcon, UploadIcon } from '@/components/Icons';
-import { GROCERY_CATEGORIES, GROCERY_PRODUCTS, GROCERY_STORES, SAMPLE_LIST } from '@/data/grocery';
+import type { GroceryCategory, GroceryProduct } from '@/types';
 import { inr, unitPrice } from '@/utils/format';
 
-type Sort = 'value' | 'price' | 'unit' | 'rating' | 'discount';
-
+type Sort = 'price' | 'unit' | 'discount';
 interface ListItem { name: string; qty: string; base: number; }
+
+const SAMPLE_LIST = '2L milk\n5kg basmati rice\nFortune sunflower oil 5L\nAmul butter\n1 dozen eggs\nAashirvaad atta 5kg\nParle-G biscuits';
+
+// Mocked for the basket calculator MVP
+const STORES = [
+  { name: 'Blinkit', logo: 'b', bg: '#E4A800', basket: 0.945 },
+  { name: 'Zepto', logo: 'Z', bg: '#5433EB', basket: 0.97 },
+  { name: 'Amazon', logo: 'a', bg: '#232F3E', basket: 1.008 },
+  { name: 'BigBasket', logo: 'bb', bg: '#84C225', basket: 0.99 },
+];
 
 const MATCH = [
   { key: 'milk', name: 'Amul Taaza Toned Milk', base: 136, qty: '2 L' },
@@ -30,45 +39,79 @@ function parseList(text: string): ListItem[] {
   });
 }
 
-export default function GrocerySearch() {
+export default function GrocerySearch({
+  categories,
+  initialProducts
+}: {
+  categories: GroceryCategory[];
+  initialProducts: GroceryProduct[];
+}) {
   const { category } = useParams<{ category?: string }>();
   const params = useSearchParams();
   const router = useRouter();
   const nav = (to: string) => router.push(to);
-  const activeCat = GROCERY_CATEGORIES.find(c => c.id === category) ?? GROCERY_CATEGORIES.find(c => c.id === 'oils')!;
+  
+  const activeCat = categories.find(c => c.cat === category) ?? categories[0];
   const [sub, setSub] = useState('All');
-  const [sort, setSort] = useState<Sort>('value');
+  const [sort, setSort] = useState<Sort>('price');
   const [modal, setModal] = useState<'type' | 'image' | null>(params.get('list') ? 'type' : null);
   const [text, setText] = useState('');
   const [list, setList] = useState<ListItem[] | null>(null);
+  
   const subsRef = useRef<HTMLDivElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
   const q = (params.get('q') ?? '').toLowerCase();
 
-  useEffect(() => { setSub('All'); subsRef.current?.scrollTo({ left: 0 }); }, [activeCat.id]);
+  // Dynamically generate sub-filters based on the brands available in the data
+  const availableBrands = useMemo(() => {
+    const brands = initialProducts.map(p => p.brand).filter(Boolean);
+    return ['All', ...Array.from(new Set(brands))];
+  }, [initialProducts]);
+
+  useEffect(() => { 
+    setSub('All'); 
+    subsRef.current?.scrollTo({ left: 0 }); 
+  }, [activeCat?.cat]);
 
   const products = useMemo(() => {
-    let l = GROCERY_PRODUCTS.filter(p => (q ? (p.brand + ' ' + p.name + ' ' + p.sub).toLowerCase().includes(q) : p.cat === activeCat.id && (sub === 'All' || p.sub === sub)));
-    const unit = (x: typeof l[number]) => unitPrice(x.price, x.size, x.unit).value;
+    let l = initialProducts.filter(p => {
+      if (q) return (p.brand + ' ' + p.name).toLowerCase().includes(q);
+      // If no search query, filter by active category and selected brand
+      const matchesCat = activeCat ? p.category === activeCat.cat || p.category === activeCat.name : true;
+      const matchesSub = sub === 'All' ? true : p.brand === sub;
+      return matchesCat && matchesSub;
+    });
+
+    const unit = (x: GroceryProduct) => unitPrice(x.price, x.size_value || 1, x.size_unit || 'pc').value;
+    
     l = [...l].sort((a, b) => {
+      const aMrp = a.regular_price || a.price;
+      const bMrp = b.regular_price || b.price;
       switch (sort) {
         case 'price': return a.price - b.price;
-        case 'rating': return b.rating - a.rating;
-        case 'discount': return (b.mrp - b.price) / b.mrp - (a.mrp - a.price) / a.mrp;
+        case 'discount': return ((bMrp - b.price) / bMrp) - ((aMrp - a.price) / aMrp);
         case 'unit': return unit(a) - unit(b);
-        default: return Number(!!b.bestValue) - Number(!!a.bestValue) || unit(a) - unit(b);
+        default: return a.price - b.price;
       }
     });
     return l;
-  }, [activeCat.id, sub, sort, q]);
+  }, [initialProducts, activeCat, sub, sort, q]);
 
   const basket = useMemo(() => {
     if (!list?.length) return null;
-    const totals = GROCERY_STORES.map(s => ({ ...s, total: Math.round(list.reduce((a, x, i) => a + x.base * (s.basket + ((i % 3) - 1) * 0.004), 0)) })).sort((a, b) => a.total - b.total);
+    const totals = STORES.map(s => ({ 
+      ...s, 
+      total: Math.round(list.reduce((a, x, i) => a + x.base * (s.basket + ((i % 3) - 1) * 0.004), 0)) 
+    })).sort((a, b) => a.total - b.total);
     return { totals, est: list.reduce((a, x) => a + x.base, 0), saving: totals[totals.length - 1].total - totals[0].total };
   }, [list]);
 
-  const submitList = (t: string) => { setList(parseList(t || SAMPLE_LIST)); setModal(null); setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 50); };
+  const submitList = (t: string) => { 
+    setList(parseList(t || SAMPLE_LIST)); 
+    setModal(null); 
+    setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 50); 
+  };
+  
   const setCategory = (id: string) => nav('/grocery/' + id);
 
   return (
@@ -79,7 +122,7 @@ export default function GrocerySearch() {
           <div className="eyebrow" style={{ marginTop: 32 }}>Grocery price comparison</div>
           <h1 className="h1" style={{ fontSize: 'clamp(30px, 4vw, 40px)', marginTop: 10 }}>Find the best grocery prices without checking every store.</h1>
           <p className="lead" style={{ marginTop: 14, fontSize: 17 }}>Search an item, or drop your entire list — we compare it across Blinkit, Zepto, Instamart and more.</p>
-          <div style={{ marginTop: 28, maxWidth: 760 }}><SearchBar placeholder="Search groceries, brands or products…" scope="grocery" submitLabel="Search" /></div>
+          <div style={{ marginTop: 28, maxWidth: 760 }}><SearchBar placeholder="Search groceries, brands or products…" scope="grocery" variant="grocery" /></div>
           <div className="row" style={{ marginTop: 16, fontSize: 13.5 }}>
             <span className="muted" style={{ fontWeight: 500 }}>Have a grocery list?</span>
             <button type="button" className="chip" onClick={() => setModal('type')}><ListIcon size={15} color="var(--violet)" />Type list</button>
@@ -94,8 +137,8 @@ export default function GrocerySearch() {
       <div className="gs-layout">
         <aside className="gs-side" aria-label="Grocery categories">
           <div className="faint" style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', padding: '0 12px 10px' }}>Grocery</div>
-          {GROCERY_CATEGORIES.map(c => (
-            <button key={c.id} type="button" className="gs-cat" aria-current={c.id === activeCat.id} onClick={() => setCategory(c.id)}>
+          {categories.map(c => (
+            <button key={c.cat} type="button" className="gs-cat" aria-current={c.cat === activeCat?.cat} onClick={() => setCategory(c.cat)}>
               <span className="gs-cat__ic">{c.icon}</span>{c.name}<span className="gs-cat__n">{c.count}</span>
             </button>
           ))}
@@ -120,30 +163,28 @@ export default function GrocerySearch() {
                     </div>
                   ))}
                 </div>
-                <div className="row" style={{ marginTop: 20, justifyContent: 'space-between' }}>
-                  <span className="muted">Buying everything at <b style={{ color: '#000' }}>{basket.totals[0].name}</b> saves you <b style={{ color: 'var(--green)' }}>{inr(basket.saving)}</b>.</span>
-                  <button type="button" className="btn btn--primary">Shop at {basket.totals[0].name} →</button>
-                </div>
               </div>
             </section>
           )}
 
           <div className="scroll-x gs-mobile-cats" role="group" aria-label="Category">
-            {GROCERY_CATEGORIES.map(c => <button key={c.id} type="button" className="chip chip--soft" aria-pressed={c.id === activeCat.id} onClick={() => setCategory(c.id)}>{c.icon} {c.name}</button>)}
+            {categories.map(c => <button key={c.cat} type="button" className="chip chip--soft" aria-pressed={c.cat === activeCat?.cat} onClick={() => setCategory(c.cat)}>{c.icon} {c.name}</button>)}
           </div>
 
           <div style={{ position: 'relative', marginBottom: 20 }}>
-            <div className="scroll-x" ref={subsRef} style={{ paddingRight: 44 }} role="group" aria-label="Subcategory">
-              {['All', ...activeCat.subs].map(s => <button key={s} type="button" className="chip" aria-pressed={s === sub} onClick={() => setSub(s)}>{s}</button>)}
+            <div className="scroll-x" ref={subsRef} style={{ paddingRight: 44 }} role="group" aria-label="Brands">
+              {availableBrands.map(s => <button key={s} type="button" className="chip" aria-pressed={s === sub} onClick={() => setSub(s)}>{s}</button>)}
             </div>
-            <button type="button" className="icon-btn" aria-label="Scroll subcategories" style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 34, height: 34 }} onClick={() => subsRef.current?.scrollBy({ left: 260, behavior: 'smooth' })}><ChevronRight size={16} /></button>
+            <button type="button" className="icon-btn" aria-label="Scroll brands" style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 34, height: 34 }} onClick={() => subsRef.current?.scrollBy({ left: 260, behavior: 'smooth' })}><ChevronRight size={16} /></button>
           </div>
 
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 18 }}>
-            <div><h2 className="h3" style={{ fontSize: 22 }}>{q ? 'Results for “' + q + '”' : activeCat.name}<span className="faint"> · {sub}</span></h2><div className="muted" style={{ fontSize: 13 }}>Showing {products.length} products · prices compared across retailers</div></div>
+            <div><h2 className="h3" style={{ fontSize: 22 }}>{q ? 'Results for “' + q + '”' : activeCat?.name}<span className="faint"> · {sub}</span></h2><div className="muted" style={{ fontSize: 13 }}>Showing {products.length} products · prices compared across retailers</div></div>
             <label className="row" style={{ fontSize: 13 }}><span className="muted">Sort</span>
               <select className="chip" value={sort} onChange={e => setSort(e.target.value as Sort)}>
-                <option value="value">Best value</option><option value="price">Lowest price</option><option value="unit">Lowest unit price</option><option value="rating">Best rated</option><option value="discount">Biggest discount</option>
+                <option value="price">Lowest price</option>
+                <option value="unit">Lowest unit price</option>
+                <option value="discount">Biggest discount</option>
               </select>
             </label>
           </div>
@@ -151,7 +192,7 @@ export default function GrocerySearch() {
           {products.length ? (
             <div style={{ display: 'grid', gap: 12 }}>{products.map(p => <GroceryCard key={p.id} p={p} />)}</div>
           ) : (
-            <div className="card" style={{ padding: 48, textAlign: 'center' }}><div style={{ fontSize: 40 }}>🧺</div><b style={{ display: 'block', marginTop: 12 }}>No products here yet</b><span className="muted" style={{ fontSize: 13.5 }}>Try another subcategory or search for a specific item.</span></div>
+            <div className="card" style={{ padding: 48, textAlign: 'center' }}><div style={{ fontSize: 40 }}>🧺</div><b style={{ display: 'block', marginTop: 12 }}>No products here yet</b><span className="muted" style={{ fontSize: 13.5 }}>Try another brand or search for a specific item.</span></div>
           )}
         </div>
       </div>

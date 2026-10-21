@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { SearchIcon } from "./Icons";
 
 type SearchResultItem = {
   id: string;
@@ -12,6 +12,7 @@ type SearchResultItem = {
   category: string;
   price: string;
   buy: number;
+  image?: string;
 };
 
 type SearchApiResponse = {
@@ -38,7 +39,6 @@ export default function SearchBar({
   const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
@@ -49,7 +49,6 @@ export default function SearchBar({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Debounced API call for keystroke search
   useEffect(() => {
     const trimmed = query.trim();
     if (trimmed.length === 0) {
@@ -76,7 +75,7 @@ export default function SearchBar({
       } finally {
         setLoading(false);
       }
-    }, 180); // 180ms delay prevents spamming the database
+    }, 180);
 
     return () => {
       clearTimeout(timer);
@@ -89,7 +88,6 @@ export default function SearchBar({
     if (!query.trim()) return;
     setOpen(false);
     
-    // Route to global or grocery search page based on where the bar is mounted
     const basePath = variant === "grocery" ? "/grocery/search" : "/search";
     router.push(`${basePath}?q=${encodeURIComponent(query.trim())}`);
   }
@@ -100,12 +98,10 @@ export default function SearchBar({
     (results?.associated?.length || 0);
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-2xl z-50">
-      <form
-        onSubmit={handleSubmit}
-        className="flex w-full items-center rounded-full border border-slate-200 bg-white py-2.5 pl-4 pr-2 shadow-sm focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500"
-      >
-        <Search className="h-5 w-5 text-slate-400 mr-2" />
+    // Added zIndex: 9999 to guarantee it sits above absolutely everything
+    <div ref={containerRef} className={`search ${variant === 'grocery' ? 'search--sm' : ''}`} style={{ width: '100%', position: 'relative', zIndex: 9999 }}>
+      <form onSubmit={handleSubmit} className="search__bar">
+        <SearchIcon size={20} className="faint" />
         <input
           type="text"
           value={query}
@@ -114,71 +110,66 @@ export default function SearchBar({
             if (query.trim().length > 0) setOpen(true);
           }}
           placeholder={placeholder}
-          className="flex-1 bg-transparent text-sm text-slate-900 outline-none"
         />
-        <button
-          type="submit"
-          className="ml-2 rounded-full bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
-        >
-          Search
-        </button>
+        <button type="submit" className="btn btn--primary">Search</button>
       </form>
 
       {open && query.trim().length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-2 max-h-[400px] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
-          {loading && !results && (
-            <div className="p-3 text-sm text-slate-500">Searching catalog...</div>
-          )}
-
+        <div className="search__drop" style={{ boxShadow: '0 12px 48px rgba(0,0,0,0.15)', border: '1px solid var(--border)' }}>
+          {loading && !results && <div className="search__label">Searching catalog...</div>}
+          
           {!loading && results && results.normalized_query !== query.trim().toLowerCase() && (
-            <div className="px-3 pb-2 text-xs font-medium text-indigo-600">
+            <div className="search__label" style={{ color: 'var(--violet)' }}>
               Showing results for "{results.normalized_query}"
             </div>
           )}
-
-          {!loading && totalCount === 0 && (
-            <div className="p-3 text-sm text-slate-500">No matches found.</div>
-          )}
+          
+          {!loading && totalCount === 0 && <div className="search__label">No matches found.</div>}
 
           {results && results.exact.length > 0 && (
-            <div className="mb-3">
-              <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600">
-                Exact Matches
-              </div>
+            <div style={{ marginBottom: 12 }}>
+              <div className="search__label">Exact Matches</div>
+              {/* Slicing to show exactly top 5 */}
               {results.exact.slice(0, 5).map((item) => (
                 <Link
                   key={item.id}
                   href={`/product/${encodeURIComponent(item.id)}`}
                   onClick={() => setOpen(false)}
-                  className="flex items-center justify-between rounded-xl px-3 py-2 transition hover:bg-slate-50"
+                  className="search__item"
+                  style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '10px 12px' }}
                 >
-                  <div className="min-w-0 flex-1 pr-4">
-                    <div className="truncate text-sm font-semibold text-slate-900">{item.name}</div>
-                    <div className="text-xs text-slate-500">{item.category} · {item.price}</div>
+                  {/* Picture of the result */}
+                  <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--canvas)', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }}>
+                    {item.image ? (
+                      <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    ) : (
+                      <SearchIcon size={18} className="faint" />
+                    )}
                   </div>
-                  <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700">
-                    Buy {item.buy}
-                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {/* Black text forced for the title */}
+                    <span className="search__title" style={{ color: '#000', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
+                    <span className="search__meta" style={{ display: 'block' }}>{item.category} • {item.price}</span>
+                  </div>
                 </Link>
               ))}
             </div>
           )}
 
           {results && results.similar.length > 0 && (
-            <div className="mb-3">
-              <div className="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-teal-700">
-                Similar & Alternatives
-              </div>
-              {results.similar.slice(0, 4).map((item) => (
+            <div>
+              <div className="search__label" style={{ color: 'var(--green)' }}>Similar & Alternatives</div>
+              {results.similar.slice(0, 3).map((item) => (
                 <Link
                   key={item.id}
                   href={`/product/${encodeURIComponent(item.id)}`}
                   onClick={() => setOpen(false)}
-                  className="flex items-center justify-between rounded-xl px-3 py-2 transition hover:bg-slate-50"
+                  className="search__item"
+                  style={{ padding: '8px 12px' }}
                 >
-                  <div className="min-w-0 flex-1 pr-4">
-                    <div className="truncate text-sm font-medium text-slate-800">{item.name}</div>
-                    <div className="text-xs text-slate-500">{item.category} · {item.price}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <span className="search__title" style={{ color: '#000' }}>{item.name}</span>
+                    <span className="search__meta">{item.category} • {item.price}</span>
                   </div>
                 </Link>
               ))}

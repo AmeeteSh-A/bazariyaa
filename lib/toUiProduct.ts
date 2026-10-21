@@ -15,18 +15,18 @@ function toCategory(cat: string): Category {
   return CATEGORY_RULES.find(([re]) => re.test(cat))?.[1] ?? 'Home';
 }
 
-/** Maps the Supabase-normalised product (lib/adapter) to the shape the UI components expect. */
-export function toUiProduct(p: DbProduct): UiProduct {
+export function toUiProduct(p: DbProduct): UiProduct & { images?: string[] } {
   const category = toCategory(p.cat);
   const currency = p.price.split(' ')[0] || 'INR';
   const mrp = p.was ? parseFloat(p.was.replace(/[^0-9.]/g, '')) || p.numericPrice : p.numericPrice;
   const prices = p.history.map(h => h.price).filter(n => n > 0);
   const history = prices.length >= 2 ? prices : [p.numericPrice, p.numericPrice];
-  // First word of the title is the best brand guess the DB gives us.
+  
   const [brand, ...rest] = p.name.split(' ');
+  
   return {
     id: p.id,
-    slug: p.id, // live products are routed by id: /product/[id]
+    slug: p.id, 
     name: rest.join(' ') || p.name,
     brand,
     category,
@@ -41,6 +41,7 @@ export function toUiProduct(p: DbProduct): UiProduct {
     history,
     icon: ICONS[category],
     currency,
-    image: p.images[0],
+    image: p.images[0], 
+    images: p.images,  
   };
 }

@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { SearchBar } from '@/components/SearchBar';
+import SearchBar from '@/components/SearchBar';
 import { ProductCard } from '@/components/ProductCard';
 import { FaqList } from '@/components/FaqList';
 import { CheckIcon, ChevronRight, ThumbIcon } from '@/components/Icons';
-import { LANDING_CATEGORIES, LANDING_FAQS, PRODUCTS as STATIC_PRODUCTS, TESTIMONIALS, TICKERS } from '@/data/products';
+import { LANDING_CATEGORIES, LANDING_FAQS, TESTIMONIALS, TICKERS } from '@/data/products';
 import type { Category, Product } from '@/types';
 import { money, sparkPoints } from '@/utils/format';
 
@@ -16,8 +16,13 @@ const MOVES = ['↑ 24%', '↑ 12%', 'NEW', '↑ 8%', '↓ 3%', '↑ 5%'];
 function useCountUp(target: number, ms = 1400) {
   const [v, setV] = useState(0);
   useEffect(() => {
-    let raf = 0; const t0 = performance.now();
-    const tick = (t: number) => { const p = Math.min(1, (t - t0) / ms); setV(target * (1 - Math.pow(1 - p, 3))); if (p < 1) raf = requestAnimationFrame(tick); };
+    let raf = 0; 
+    const t0 = performance.now();
+    const tick = (t: number) => { 
+      const p = Math.min(1, (t - t0) / ms); 
+      setV(target * (1 - Math.pow(1 - p, 3))); 
+      if (p < 1) raf = requestAnimationFrame(tick); 
+    };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [target, ms]);
@@ -26,51 +31,76 @@ function useCountUp(target: number, ms = 1400) {
 
 function Stat({ target, decimals = 0, prefix = '', suffix = '', label }: { target: number; decimals?: number; prefix?: string; suffix?: string; label: string }) {
   const v = useCountUp(target);
-  return <div><div className="v">{prefix}{decimals ? v.toFixed(decimals) : Math.round(v).toLocaleString('en-IN')}{suffix}</div><div className="l">{label}</div></div>;
+  return (
+    <div>
+      <div className="v">{prefix}{decimals ? v.toFixed(decimals) : Math.round(v).toLocaleString('en-IN')}{suffix}</div>
+      <div className="l">{label}</div>
+    </div>
+  );
 }
 
 export default function Landing({ liveProducts = [] }: { liveProducts?: Product[] }) {
-  // Live Supabase products first; pad with the static showcase set so every section has data.
-  const PRODUCTS = useMemo(() => [...liveProducts, ...STATIC_PRODUCTS.filter(sp => !liveProducts.some(l => l.id === sp.id))], [liveProducts]);
+  const PRODUCTS = liveProducts;
   const [filter, setFilter] = useState<'All' | Category>('All');
   const [tick, setTick] = useState(0);
   const [tIdx, setTIdx] = useState(0);
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
 
-  useEffect(() => { const i = setInterval(() => setTick(t => (t + 1) % TICKERS.length), 3000); return () => clearInterval(i); }, []);
+  useEffect(() => { 
+    const i = setInterval(() => setTick(t => (t + 1) % TICKERS.length), 3000); 
+    return () => clearInterval(i); 
+  }, []);
+  
   const list = useMemo(() => (filter === 'All' ? PRODUCTS : PRODUCTS.filter(p => p.category === filter)), [filter, PRODUCTS]);
   const t = TESTIMONIALS[tIdx];
+
+  const dealsData = PRODUCTS.slice(0, 3).map((p, i) => ({
+    p,
+    win: ['3 months', '6 months', '30 days'][i] || '30 days',
+    verdict: ['Great price', 'Lowest ever', 'Wait — rising'][i] || 'Good time to buy',
+    good: i !== 2,
+    rets: [['Amazon AE', 'Sharaf DG', 'Noon'], ['Sharaf DG', 'Amazon AE', 'Carrefour'], ['Noon', 'Amazon AE', 'Carrefour']][i] || ['Amazon AE']
+  }));
 
   return (
     <>
       <div className="container" id="top">
         <section className="hero">
           <div className="hero__copy">
-            <span className="badge">● Live across India</span>
+            <span className="badge">● Live across UAE & India</span>
             <h1 className="h1" style={{ marginTop: 24 }}>Know what's<br />worth buying<span style={{ color: 'var(--violet)' }}>.</span></h1>
-            <p className="lead">India's honest product-discovery platform. Real reviews, live price history and a score you can trust — before you spend a rupee.</p>
+            <p className="lead">The honest product-discovery platform. Real reviews, live price history and a score you can trust — before you spend a dime.</p>
             <div className="hero__search"><SearchBar /></div>
             <div className="row" style={{ marginTop: 24, fontSize: 13 }}>
               <span className="muted" style={{ fontWeight: 500 }}>Trending:</span>
-              {['Phones under ₹30k', 'Best air fryer', 'Noise-cancelling buds', 'Sunflower oil'].map(q => <span key={q} className="chip">{q}</span>)}
+              {['Laptops under 3000 AED', 'Best air fryer', 'Noise-cancelling buds', 'Sunflower oil'].map(q => <span key={q} className="chip">{q}</span>)}
             </div>
           </div>
           <div>
             <div className="card feed">
               <div className="feed__head">
-                <div><div className="faint" style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 500 }}>Trending right now</div><div className="h3" style={{ marginTop: 4 }}>What India is buying</div></div>
+                <div><div className="faint" style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 500 }}>Trending right now</div><div className="h3" style={{ marginTop: 4 }}>What people are buying</div></div>
                 <span className="live">LIVE</span>
               </div>
+              
+              {PRODUCTS.length === 0 && (
+                <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--slate-text)' }}>
+                  Loading live trends...
+                </div>
+              )}
+
               {PRODUCTS.slice(0, 6).map((p, i) => (
                 <Link key={p.id} href={'/product/' + p.slug} className="feed__row">
                   <span className="feed__rank">{i + 1}</span>
-                  <span className="feed__thumb placeholder">{p.icon}</span>
+                  <span className="feed__thumb" style={{ background: 'var(--canvas)', overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
+  {p.image ? <img src={p.image} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : p.icon}
+</span>
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: 'block', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.brand} {p.name}</span>
                     <span className="muted" style={{ fontSize: 12 }}>{p.category} · <b style={{ color: '#000', fontWeight: 500 }}>{money(p.price, p.currency)}</b></span>
                   </span>
-                  <span className={'badge' + (MOVES[i] === 'NEW' ? '' : ' badge--white')}>{MOVES[i]}</span>
+                  <span className={'badge' + (MOVES[i] === 'NEW' ? '' : ' badge--white')}>{MOVES[i] || 'LIVE'}</span>
                 </Link>
               ))}
               <div className="feed__ticker" aria-live="polite"><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--violet)' }} />{TICKERS[tick]}</div>
@@ -104,7 +134,14 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
           <div className="scroll-x" style={{ margin: '24px 0' }} role="group" aria-label="Filter by category">
             {FILTERS.map(f => <button key={f} type="button" className="chip" aria-pressed={f === filter} onClick={() => setFilter(f)}>{f}</button>)}
           </div>
-          <div className="grid g4">{list.map(p => <ProductCard key={p.id} p={p} />)}</div>
+          
+          {list.length === 0 ? (
+            <div className="card" style={{ padding: 48, textAlign: 'center', color: 'var(--slate-text)' }}>
+              No products found for this category yet.
+            </div>
+          ) : (
+            <div className="grid g4">{list.map(p => <ProductCard key={p.id} p={p} />)}</div>
+          )}
         </div>
       </section>
 
@@ -116,43 +153,44 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
             <p className="lead" style={{ marginTop: 16, fontSize: 17 }}>Every product is graded by the same transparent system — never by who pays us.</p>
           </div>
           <div className="grid g3">
-            {[['🛡️', '94', 'Review Trust Score', 'Share of reviews from genuine, verified buyers — fake and coordinated reviews filtered out.', 94], ['💎', '8.8', 'Value for Money', 'How much you get per rupee versus every comparable product, updated as prices move.', 88], ['👍', '96%', 'Recommended', 'One honest number combining trust, value, price fairness and reliability.', 96]].map(([ic, n, ti, body, bar]) => (
+            {[['🛡️', '94', 'Review Trust Score', 'Share of reviews from genuine, verified buyers — fake and coordinated reviews filtered out.', 94], ['💎', '8.8', 'Value for Money', 'How much you get per unit versus every comparable product, updated as prices move.', 88], ['👍', '96%', 'Recommended', 'One honest number combining trust, value, price fairness and reliability.', 96]].map(([ic, n, ti, body, bar]) => (
               <div key={ti as string} className="card card--pad score-card">
                 <div className="row" style={{ justifyContent: 'space-between' }}><div className="cat-card__ic" style={{ margin: 0 }}>{ic}</div><div className="num">{n}</div></div>
                 <h3 className="h3" style={{ fontSize: 18, margin: '16px 0 8px' }}>{ti}</h3>
                 <p className="muted" style={{ margin: 0, fontSize: 14.5, lineHeight: 1.5 }}>{body}</p>
-                <div className="bar"><span style={{ width: bar + '%' }} /></div>
+                <div className="bar"><span style={{ width: bar as number + '%' }} /></div>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="section" id="deals">
-        <div className="container">
-          <div className="sec-head"><div><div className="eyebrow">Price intelligence</div><h2 className="h2">Best time to buy</h2></div><p className="muted" style={{ maxWidth: 340, margin: 0, fontSize: 14 }}>We track every price change so you never overpay at the wrong moment.</p></div>
-          <div className="grid g3">
-            {[[PRODUCTS[0], '3 months', 'Great price', true, ['Amazon', 'Flipkart', 'Croma']], [PRODUCTS[6], '6 months', 'Lowest ever', true, ['Amazon', 'Flipkart', 'Tata CLiQ']], [PRODUCTS[5], '30 days', 'Wait — rising', false, ['Amazon', 'Croma', 'Reliance Digital']]].map(([pp, win, verdict, good, rets]) => {
-              const p = pp as Product;
-              return (
+      {dealsData.length > 0 && (
+        <section className="section" id="deals">
+          <div className="container">
+            <div className="sec-head"><div><div className="eyebrow">Price intelligence</div><h2 className="h2">Best time to buy</h2></div><p className="muted" style={{ maxWidth: 340, margin: 0, fontSize: 14 }}>We track every price change so you never overpay at the wrong moment.</p></div>
+            <div className="grid g3">
+              {dealsData.map(({ p, win, verdict, good, rets }) => (
                 <div key={p.id} className="card card--pad" style={{ display: 'flex', flexDirection: 'column' }}>
-                  <div className="row"><span className="feed__thumb placeholder">{p.icon}</span><div><div style={{ fontWeight: 600 }}>{p.brand} {p.name}</div><div className="muted" style={{ fontSize: 12.5 }}>{p.category}</div></div></div>
+                  <div className="row"><span className="feed__thumb" style={{ background: 'var(--canvas)', overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
+  {p.image ? <img src={p.image} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : p.icon}
+</span><div><div style={{ fontWeight: 600 }}>{p.brand} {p.name}</div><div className="muted" style={{ fontSize: 12.5 }}>{p.category}</div></div></div>
                   <svg width="100%" height="70" viewBox="0 0 260 70" preserveAspectRatio="none" style={{ margin: '24px 0 8px' }} aria-hidden="true"><polyline points={sparkPoints(p.history, 260, 70, 8)} fill="none" stroke="#787574" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
-                    <div><div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.035em' }}>{money(p.price, p.currency)}</div><div className="muted" style={{ fontSize: 12.5 }}>lowest in {win as string}</div></div>
-                    <span className={'badge' + (good ? '' : ' badge--white')}>{verdict as string}</span>
+                    <div><div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.035em' }}>{money(p.price, p.currency)}</div><div className="muted" style={{ fontSize: 12.5 }}>lowest in {win}</div></div>
+                    <span className={'badge' + (good ? '' : ' badge--white')}>{verdict}</span>
                   </div>
                   <Link href={'/product/' + p.slug} className={'btn btn--block ' + (good ? 'btn--primary' : 'btn--secondary')}>{good ? 'Buy now' : 'Set price alert'}</Link>
                   <div className="row" style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--divider)' }}>
                     <span className="faint" style={{ fontSize: 11 }}>Available at</span>
-                    {(rets as string[]).map(r => <span key={r} className="retailer-chip">{r}</span>)}
+                    {rets.map(r => <span key={r} className="retailer-chip">{r}</span>)}
                   </div>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="section" id="community">
         <div className="container">
@@ -186,7 +224,7 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
         <Stat target={2.4} decimals={1} suffix="M" label="Products tracked" />
         <Stat target={8.9} decimals={1} suffix="M" label="Verified reviews" />
         <Stat target={40} suffix="M" label="Price points daily" />
-        <Stat target={4200} prefix="₹" label="Avg. saved per buyer" />
+        <Stat target={420} prefix="AED " label="Avg. saved per buyer" />
       </div></div></section>
 
       <section className="section"><div className="container" style={{ maxWidth: 900 }}>

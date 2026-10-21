@@ -9,8 +9,17 @@ export function ProductCard({ p }: { p: Product }) {
   const trend = p.trend === 'down' ? '↓ dropping' : p.trend === 'up' ? '↑ rising' : '→ stable';
   return (
     <article className="card card--hover pcard">
-      <Link href={'/product/' + p.slug} className="pcard__img placeholder" aria-label={p.name}>
-        <span>{p.icon}</span>
+      <Link 
+        href={'/product/' + p.slug} 
+        className={`pcard__img ${!p.image ? 'placeholder' : ''}`} 
+        aria-label={p.name}
+        style={p.image ? { background: 'var(--canvas)' } : {}}
+      >
+        {p.image ? (
+          <img src={p.image} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 16 }} />
+        ) : (
+          <span>{p.icon}</span>
+        )}
         <span className="badge badge--white pcard__badge">👍 {p.recommended}% Recommended</span>
       </Link>
       <div className="pcard__body">

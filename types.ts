@@ -1,4 +1,18 @@
-export type Retailer = 'Amazon' | 'Flipkart' | 'Croma' | 'Reliance Digital' | 'Tata CLiQ' | 'Blinkit' | 'Zepto' | 'Instamart' | 'BigBasket';
+export type Retailer = 
+  | 'Amazon' 
+  | 'Flipkart' 
+  | 'Croma' 
+  | 'Reliance Digital' 
+  | 'Tata CLiQ' 
+  | 'Blinkit' 
+  | 'Zepto' 
+  | 'Instamart' 
+  | 'BigBasket'
+  | 'Amazon AE'
+  | 'Sharaf DG'
+  | 'Noon'
+  | 'Carrefour'
+  | (string & {});
 
 export interface RetailerOffer {
   retailer: Retailer;
@@ -28,6 +42,7 @@ export interface Product {
   /** ISO code; defaults to INR for static data. Live Supabase rows may be AED. */
   currency?: string;
   image?: string;
+  images?: string[];
 }
 
 export interface PhoneSpec {
@@ -74,18 +89,27 @@ export interface GroceryCategory {
   subs: string[];
 }
 
+export interface GroceryCategory {
+  cat: string;
+  name: string;
+  icon: string;
+  tint: string;
+  count: number;
+}
+
 export interface GroceryProduct {
   id: string;
-  cat: string;
-  sub: string;
-  brand: string;
+  retailer: string;
+  product_url: string;
+  sku: string;
   name: string;
-  img?: string;
-  emoji: string;
-  size: number;
-  unit: Unit;
+  brand: string;
+  category: string;
   price: number;
-  mrp: number;
-  rating: number;
-  bestValue?: boolean;
+  regular_price: number;
+  currency: string;
+  size_value: number;
+  size_unit: string;
+  in_stock: boolean;
+  image_url: string;
 }

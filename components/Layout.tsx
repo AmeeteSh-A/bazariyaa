@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCompare } from '@/context/CompareContext';
 import { CloseIcon, CompareIcon, MenuIcon } from './Icons';
-import { SearchBar } from './SearchBar';
+import SearchBar from './SearchBar';
 
 const NAV = [
   { to: '/', label: 'Home', end: true },
@@ -92,8 +92,9 @@ export function Footer() {
 export function CompareFab() {
   const { ids } = useCompare();
   if (!ids.length) return null;
+  
   return (
-    <Link href="/product/apple-iphone-17-pro#compare" className="btn btn--primary fab">
+    <Link href={`/product/${ids[0]}#compare`} className="btn btn--primary fab">
       <CompareIcon /> Compare <span className="fab__n">{ids.length}</span>
     </Link>
   );
