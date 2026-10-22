@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { GroceryCard } from '@/components/GroceryCard';
 import { Modal } from '@/components/Modal';
-import { SearchBar } from '@/components/SearchBar';
+import SearchBar from '@/components/SearchBar';
 import { CheckIcon, ChevronRight, ClipIcon, ImageIcon, ListIcon, MicIcon, PinIcon, UploadIcon } from '@/components/Icons';
 import type { GroceryCategory, GroceryProduct } from '@/types';
 import { inr, unitPrice } from '@/utils/format';
@@ -14,7 +14,6 @@ interface ListItem { name: string; qty: string; base: number; }
 
 const SAMPLE_LIST = '2L milk\n5kg basmati rice\nFortune sunflower oil 5L\nAmul butter\n1 dozen eggs\nAashirvaad atta 5kg\nParle-G biscuits';
 
-// Mocked for the basket calculator MVP
 const STORES = [
   { name: 'Blinkit', logo: 'b', bg: '#E4A800', basket: 0.945 },
   { name: 'Zepto', logo: 'Z', bg: '#5433EB', basket: 0.97 },
@@ -41,10 +40,10 @@ function parseList(text: string): ListItem[] {
 
 export default function GrocerySearch({
   categories,
-  initialProducts
+  initialProducts = []
 }: {
   categories: GroceryCategory[];
-  initialProducts: GroceryProduct[];
+  initialProducts?: GroceryProduct[];
 }) {
   const { category } = useParams<{ category?: string }>();
   const params = useSearchParams();
@@ -62,7 +61,6 @@ export default function GrocerySearch({
   const resultsRef = useRef<HTMLDivElement>(null);
   const q = (params.get('q') ?? '').toLowerCase();
 
-  // Dynamically generate sub-filters based on the brands available in the data
   const availableBrands = useMemo(() => {
     const brands = initialProducts.map(p => p.brand).filter(Boolean);
     return ['All', ...Array.from(new Set(brands))];
@@ -73,30 +71,62 @@ export default function GrocerySearch({
     subsRef.current?.scrollTo({ left: 0 }); 
   }, [activeCat?.cat]);
 
-  const products = useMemo(() => {
-    let l = initialProducts.filter(p => {
-      if (q) return (p.brand + ' ' + p.name).toLowerCase().includes(q);
-      // If no search query, filter by active category and selected brand
-      const matchesCat = activeCat ? p.category === activeCat.cat || p.category === activeCat.name : true;
-      const matchesSub = sub === 'All' ? true : p.brand === sub;
-      return matchesCat && matchesSub;
-    });
+const products = useMemo(() => {
+    let l = initialProducts;
 
-    const unit = (x: GroceryProduct) => unitPrice(x.price, x.size_value || 1, x.size_unit || 'pc').value;
+    if (q) {
+      l = l.filter(p => (p.brand + ' ' + p.name).toLowerCase().includes(q.toLowerCase()));
+    } else {
+      // Category Filtering
+      l = l.filter(p => {
+        if (!activeCat) return true;
+
+        const pCat = (p.category || '').toLowerCase().trim();
+        const aCat = (activeCat.cat || '').toLowerCase().trim();   
+        const aName = (activeCat.name || '').toLowerCase().trim(); 
+
+        // THE FIX: If the product has no category in the database, 
+        // stop it from automatically matching every tab.
+        if (!pCat) return false; 
+
+        // Smart matching that is now immune to empty-string bugs
+        const matchesCat = 
+          pCat === aCat || 
+          pCat === aName || 
+          (aCat && pCat.includes(aCat)) || 
+          (aName && pCat.includes(aName)) ||
+          aName.includes(pCat) ||
+          aCat.includes(pCat);
+          
+        const matchesSub = sub === 'All' ? true : p.brand === sub;
+        
+        return matchesCat && matchesSub;
+      });
+    }
+
+    // Safely calculate unit prices
+    const unit = (x: GroceryProduct) => unitPrice(x.price || 0, x.size_value || 1, (x.size_unit as any) || 'pc').value;
     
+    // Sorting
     l = [...l].sort((a, b) => {
-      const aMrp = a.regular_price || a.price;
-      const bMrp = b.regular_price || b.price;
+      const aPrice = a.price || 0;
+      const bPrice = b.price || 0;
+      const aMrp = a.regular_price || aPrice;
+      const bMrp = b.regular_price || bPrice;
+      
       switch (sort) {
-        case 'price': return a.price - b.price;
-        case 'discount': return ((bMrp - b.price) / bMrp) - ((aMrp - a.price) / aMrp);
+        case 'price': return aPrice - bPrice; 
+        case 'discount': return ((bMrp - bPrice) / (bMrp || 1)) - ((aMrp - aPrice) / (aMrp || 1)); 
         case 'unit': return unit(a) - unit(b);
-        default: return a.price - b.price;
+        default: return aPrice - bPrice;
       }
     });
+    
     return l;
   }, [initialProducts, activeCat, sub, sort, q]);
-
+  
+  
+  
   const basket = useMemo(() => {
     if (!list?.length) return null;
     const totals = STORES.map(s => ({ 
@@ -122,7 +152,9 @@ export default function GrocerySearch({
           <div className="eyebrow" style={{ marginTop: 32 }}>Grocery price comparison</div>
           <h1 className="h1" style={{ fontSize: 'clamp(30px, 4vw, 40px)', marginTop: 10 }}>Find the best grocery prices without checking every store.</h1>
           <p className="lead" style={{ marginTop: 14, fontSize: 17 }}>Search an item, or drop your entire list — we compare it across Blinkit, Zepto, Instamart and more.</p>
-          <div style={{ marginTop: 28, maxWidth: 760 }}><SearchBar placeholder="Search groceries, brands or products…" scope="grocery" variant="grocery" /></div>
+          <div style={{ marginTop: 28, maxWidth: 760 }}>
+            <SearchBar placeholder="Search groceries, brands or products…" variant="grocery" />
+            </div>
           <div className="row" style={{ marginTop: 16, fontSize: 13.5 }}>
             <span className="muted" style={{ fontWeight: 500 }}>Have a grocery list?</span>
             <button type="button" className="chip" onClick={() => setModal('type')}><ListIcon size={15} color="var(--violet)" />Type list</button>
