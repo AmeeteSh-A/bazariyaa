@@ -221,6 +221,11 @@ const products = useMemo(() => {
             </label>
           </div>
 
+          <div style={{ padding: 10, background: '#000', color: '#0f0', fontFamily: 'monospace', marginBottom: 20 }}>
+  <strong>RAW DB CATEGORIES:</strong><br/>
+  {Array.from(new Set(initialProducts.map(p => p.category))).join(' | ')}
+</div>
+
           {products.length ? (
             <div style={{ display: 'grid', gap: 12 }}>{products.map(p => <GroceryCard key={p.id} p={p} />)}</div>
           ) : (
