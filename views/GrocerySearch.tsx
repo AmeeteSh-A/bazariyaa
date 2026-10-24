@@ -6,7 +6,7 @@ import { GroceryCard } from '@/components/GroceryCard';
 import { Modal } from '@/components/Modal';
 import SearchBar from '@/components/SearchBar';
 import { CheckIcon, ChevronRight, ClipIcon, ImageIcon, ListIcon, MicIcon, PinIcon, UploadIcon } from '@/components/Icons';
-import type { GroceryCategory, GroceryProduct } from '@/types';
+import type { GroceryCategory } from '@/types';
 import { inr, unitPrice } from '@/utils/format';
 
 type Sort = 'price' | 'unit' | 'discount';
@@ -43,7 +43,7 @@ export default function GrocerySearch({
   initialProducts = []
 }: {
   categories: GroceryCategory[];
-  initialProducts?: GroceryProduct[];
+  initialProducts?: any[]; // Accepts the grouped data structure
 }) {
   const { category } = useParams<{ category?: string }>();
   const params = useSearchParams();
@@ -71,9 +71,8 @@ export default function GrocerySearch({
     subsRef.current?.scrollTo({ left: 0 }); 
   }, [activeCat?.cat]);
 
-const products = useMemo(() => {
+  const products = useMemo(() => {
     let l = initialProducts;
-
     
     const categoryMap: Record<string, string[]> = {
       produce: ['fruit', 'vegetable', 'mango', 'tomato', 'avocado', 'farm fresh', 'produce'],
@@ -81,7 +80,7 @@ const products = useMemo(() => {
       snacks: ['snack', 'chips', 'biscuit', 'namkeen'],
       oils: ['oil', 'ghee', 'butter'],
       baby: ['baby', 'diaper', 'wipes']
-      };
+    };
 
     if (q) {
       l = l.filter(p => (p.brand + ' ' + p.name).toLowerCase().includes(q.toLowerCase()));
@@ -93,7 +92,6 @@ const products = useMemo(() => {
         const aCat = (activeCat.cat || '').toLowerCase().trim();   
         
         if (!pCat) return false; 
-
         
         let matchesCat = pCat.includes(aCat) || aCat.includes(pCat);
         if (!matchesCat && categoryMap[aCat]) {
@@ -106,25 +104,36 @@ const products = useMemo(() => {
       });
     }
 
-    const unit = (x: GroceryProduct) => unitPrice(x.price || 0, x.size_value || 1, (x.size_unit as any) || 'pc').value;
-    
+    // Apply Sorting using the nested group structure
     l = [...l].sort((a, b) => {
-      const aPrice = a.price || 0;
-      const bPrice = b.price || 0;
-      const aMrp = a.regular_price || aPrice;
-      const bMrp = b.regular_price || bPrice;
+      const aBase = a.sizes?.[0]?.stores?.[0] || { price: 0, mrp: 0 };
+      const bBase = b.sizes?.[0]?.stores?.[0] || { price: 0, mrp: 0 };
+
+      const aPrice = aBase.price;
+      const bPrice = bBase.price;
+      const aMrp = aBase.mrp;
+      const bMrp = bBase.mrp;
       
       switch (sort) {
-        case 'price': return aPrice - bPrice; 
-        case 'discount': return ((bMrp - bPrice) / (bMrp || 1)) - ((aMrp - aPrice) / (aMrp || 1)); 
-        case 'unit': return unit(a) - unit(b);
-        default: return aPrice - bPrice;
+        case 'price': 
+          return aPrice - bPrice; 
+        case 'discount': {
+          const aPct = aMrp > aPrice ? (aMrp - aPrice) / aMrp : 0;
+          const bPct = bMrp > bPrice ? (bMrp - bPrice) / bMrp : 0;
+          return bPct - aPct; // Highest discount first
+        }
+        case 'unit': {
+          const aUnit = unitPrice(aPrice, a.sizes?.[0]?.size_value || 1, a.sizes?.[0]?.size_unit || 'pc').value;
+          const bUnit = unitPrice(bPrice, b.sizes?.[0]?.size_value || 1, b.sizes?.[0]?.size_unit || 'pc').value;
+          return aUnit - bUnit;
+        }
+        default: 
+          return aPrice - bPrice;
       }
     });
     
     return l;
   }, [initialProducts, activeCat, sub, sort, q]);  
-  
   
   const basket = useMemo(() => {
     if (!list?.length) return null;
@@ -220,10 +229,8 @@ const products = useMemo(() => {
             </label>
           </div>
 
-
-
           {products.length ? (
-            <div style={{ display: 'grid', gap: 12 }}>{products.map(p => <GroceryCard key={p.id} p={p} />)}</div>
+            <div style={{ display: 'grid', gap: 12 }}>{products.map((p: any) => <GroceryCard key={p.id} p={p} />)}</div>
           ) : (
             <div className="card" style={{ padding: 48, textAlign: 'center' }}><div style={{ fontSize: 40 }}>🧺</div><b style={{ display: 'block', marginTop: 12 }}>No products here yet</b><span className="muted" style={{ fontSize: 13.5 }}>Try another brand or search for a specific item.</span></div>
           )}

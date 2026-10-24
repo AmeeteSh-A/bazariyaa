@@ -1,6 +1,5 @@
 import { notFound } from 'next/navigation';
 import ProductView from '@/views/Product';
-import { PRODUCTS, PDP_OFFERS, PDP_SPECS } from '@/data/products';
 import { normalizeProduct } from '@/lib/adapter';
 import { toUiProduct } from '@/lib/toUiProduct';
 import { serverSupabase } from '@/lib/supabaseServer';
@@ -16,11 +15,9 @@ const parseMongoNum = (val: any): number => {
 
 function buildRealSpec(rawJson: any, basePrice: number): PhoneSpec {
   const attrs = rawJson.attributes || rawJson.specifications || {};
-  
   const mem = attrs.RAM || attrs.Memory || attrs['RAM Size'] || attrs['Installed RAM memory size'] || '';
   const storage = attrs.Capacity || attrs.Storage || attrs['Hard disk size'] || attrs['Hard-Drive Size'] || '';
   const ramStorage = [mem, storage].filter(Boolean).join(' / ') || '-';
-
   const cameraFallback = attrs['Automatic Backup Software Included'] === 'Webcam' ? 'Webcam' : '-';
 
   return {
@@ -40,27 +37,9 @@ function buildRealSpec(rawJson: any, basePrice: number): PhoneSpec {
     warranty: attrs.Warranty || '-'
   };
 }
+
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-
-  const staticProduct = PRODUCTS.find(p => p.slug === id);
-  if (staticProduct) {
-    const dummySpec = {
-      id: staticProduct.id, name: staticProduct.name, brand: staticProduct.brand,
-      buy: 90, price: staticProduct.price, value: 8.5, trust: 95,
-      display: 'Pro Display', processor: 'Pro Chip', ramStorage: '12GB / 256GB',
-      battery: 5000, camera: 'Pro System', charging: 'Fast Charge', warranty: '1 Year'
-    };
-    return (
-      <ProductView 
-        product={staticProduct} 
-        offers={PDP_OFFERS}
-        specs={PDP_SPECS}
-        baseSpec={dummySpec}
-        availableSpecs={[dummySpec]}
-      />
-    );
-  }
 
   const supabase = serverSupabase();
   if (!supabase) notFound();
@@ -70,7 +49,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
     .select('data')
     .eq('id', id)
     .single();
-    
+       
   if (!raw) notFound();
 
   const { data: hist } = await supabase
@@ -84,10 +63,10 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   const uiProduct = toUiProduct(dbProduct);
   const actualPrice = parseMongoNum(raw.data.price);
 
-  const primaryRetailer = raw.data.site_name === 'amazon.ae' ? 'Amazon AE' 
-                        : raw.data.site_name === 'alasil.ae' ? 'Alasil'
-                        : 'Store';
-                        
+  const primaryRetailer = raw.data.site_name === 'amazon.ae' ? 'Amazon AE'
+                         : raw.data.site_name === 'alasil.ae' ? 'Alasil'
+                         : 'Store';
+                           
   const offers = [
     { retailer: primaryRetailer, price: actualPrice, delivery: 'Free delivery by tomorrow', inStock: raw.data.in_stock !== false },
     { retailer: 'Noon', price: Math.round(actualPrice * 1.02), delivery: 'Delivery in 2 days', inStock: true },
@@ -98,16 +77,15 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
     .from('raw_products')
     .select('data')
     .limit(4);
-    
+       
   const alternatives = (altRaw || []).map(r => toUiProduct(normalizeProduct(r.data, null)));
-
   const baseSpec = buildRealSpec(raw.data, actualPrice);
   const availableSpecs = (altRaw || []).map(r => buildRealSpec(r.data, parseMongoNum(r.data.price)));
 
   return (
-    <ProductView 
-      product={uiProduct} 
-      specs={dbProduct.specs || []} 
+    <ProductView
+      product={uiProduct}
+      specs={dbProduct.specs || []}
       offers={offers}
       alternatives={alternatives}
       baseSpec={baseSpec}

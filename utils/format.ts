@@ -1,35 +1,33 @@
 import type { Unit } from '@/types';
+export const inr = (n: number): string => 'AED ' + Math.round(n).toLocaleString('en-AE');
 
-export const inr = (n: number): string => '₹' + Math.round(n).toLocaleString('en-IN');
-
-export const money = (n: number, currency: string = 'INR'): string =>
-  currency === 'INR' ? inr(n) : currency + ' ' + Math.round(n).toLocaleString('en-IN');
+export const money = (n: number, currency: string = 'AED'): string =>
+  currency === 'AED' ? inr(n) : currency + ' ' + Math.round(n).toLocaleString('en-AE');
 
 export const discountPct = (price: number, mrp: number): number =>
   mrp > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0;
 
-/** Normalised price so different pack sizes compare fairly. */
 export function unitPrice(price: number, size: number, unit: Unit): { value: number; label: string; short: string } {
   switch (unit) {
     case 'L': {
       const v = price / (size * 10);
-      return { value: v, label: '₹' + v.toFixed(2) + ' / 100ml', short: '₹' + (price / (size * 1000)).toFixed(2) + '/ml' };
+      return { value: v, label: 'AED ' + v.toFixed(2) + ' / 100ml', short: 'AED ' + (price / (size * 1000)).toFixed(2) + '/ml' };
     }
     case 'ml': {
       const v = price / (size / 100);
-      return { value: v, label: '₹' + v.toFixed(2) + ' / 100ml', short: '₹' + (price / size).toFixed(2) + '/ml' };
+      return { value: v, label: 'AED ' + v.toFixed(2) + ' / 100ml', short: 'AED ' + (price / size).toFixed(2) + '/ml' };
     }
     case 'kg': {
       const v = price / (size * 10);
-      return { value: v, label: '₹' + v.toFixed(2) + ' / 100g', short: '₹' + Math.round(price / size) + '/kg' };
+      return { value: v, label: 'AED ' + v.toFixed(2) + ' / 100g', short: 'AED ' + Math.round(price / size) + '/kg' };
     }
     case 'g': {
       const v = price / (size / 100);
-      return { value: v, label: '₹' + v.toFixed(2) + ' / 100g', short: '₹' + (price / size).toFixed(2) + '/g' };
+      return { value: v, label: 'AED ' + v.toFixed(2) + ' / 100g', short: 'AED ' + (price / size).toFixed(2) + '/g' };
     }
     default: {
       const v = price / size;
-      return { value: v, label: '₹' + v.toFixed(2) + ' / pc', short: '₹' + Math.round(v) + '/pc' };
+      return { value: v, label: 'AED ' + v.toFixed(2) + ' / pc', short: 'AED ' + Math.round(v) + '/pc' };
     }
   }
 }

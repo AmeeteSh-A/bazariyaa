@@ -2,8 +2,8 @@ import React from "react";
 import Link from "next/link";
 import SearchBar from "@/components/SearchBar";
 import { parseQuery } from "@/lib/search/queryParser";
-import { classifyResults } from "@/lib/search/classifier";
 import { serverSupabase } from "@/lib/supabaseServer";
+import { money } from "@/utils/format";
 
 export default async function GlobalSearchPage({
   searchParams 
@@ -26,7 +26,11 @@ export default async function GlobalSearchPage({
     }
   }
 
-  const buckets = classifyResults(dbRows, parsed);
+  const buckets = {
+    exact: dbRows.filter((r: any) => r.bucket === 'exact'),
+    similar: dbRows.filter((r: any) => r.bucket === 'similar'),
+    associated: dbRows.filter((r: any) => r.bucket === 'associated'),
+  };
 
   return (
     <main className="container section">
@@ -50,17 +54,22 @@ export default async function GlobalSearchPage({
           Exact Matches ({buckets.exact.length})
         </h2>
         <div className="grid g4">
-          {buckets.exact.map((item) => (
+          {buckets.exact.map((item: any) => (
             <Link
               key={item.id}
               href={`/product/${encodeURIComponent(item.id)}`}
               className="card card--hover pcard"
             >
+              {item.image && (
+                <div className="pcard__img" style={{ background: 'var(--canvas)', padding: 16, height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <img src={item.image} alt={item.name} style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+                </div>
+              )}
               <div className="pcard__body">
                 <div className="eyebrow">{item.category}</div>
                 <div className="pcard__name">{item.name}</div>
                 <div className="pcard__foot">
-                  <div className="pcard__price" style={{ color: 'var(--violet)' }}>{item.price}</div>
+                  <div className="pcard__price" style={{ color: 'var(--violet)' }}>{money(item.price)}</div>
                 </div>
               </div>
             </Link>
@@ -74,17 +83,22 @@ export default async function GlobalSearchPage({
             Similar & Alternatives ({buckets.similar.length})
           </h2>
           <div className="grid g4">
-            {buckets.similar.map((item) => (
+            {buckets.similar.map((item: any) => (
               <Link
                 key={item.id}
                 href={`/product/${encodeURIComponent(item.id)}`}
                 className="card card--hover pcard"
               >
+                {item.image && (
+                  <div className="pcard__img" style={{ background: 'var(--canvas)', padding: 16, height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <img src={item.image} alt={item.name} style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
+                  </div>
+                )}
                 <div className="pcard__body">
                   <div className="eyebrow" style={{ color: 'var(--green)' }}>{item.category}</div>
                   <div className="pcard__name">{item.name}</div>
                   <div className="pcard__foot">
-                    <div className="pcard__price">{item.price}</div>
+                    <div className="pcard__price">{money(item.price)}</div>
                   </div>
                 </div>
               </Link>
