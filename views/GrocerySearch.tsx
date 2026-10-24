@@ -74,29 +74,31 @@ export default function GrocerySearch({
 const products = useMemo(() => {
     let l = initialProducts;
 
+    
+    const categoryMap: Record<string, string[]> = {
+      produce: ['fruit', 'vegetable', 'mango', 'tomato', 'avocado', 'farm fresh', 'produce'],
+      meat: ['chicken', 'meat', 'fish', 'mutton', 'pork'],
+      snacks: ['snack', 'chips', 'biscuit', 'namkeen'],
+      oils: ['oil', 'ghee', 'butter'],
+      baby: ['baby', 'diaper', 'wipes']
+      };
+
     if (q) {
       l = l.filter(p => (p.brand + ' ' + p.name).toLowerCase().includes(q.toLowerCase()));
     } else {
-      // Category Filtering
       l = l.filter(p => {
         if (!activeCat) return true;
 
         const pCat = (p.category || '').toLowerCase().trim();
         const aCat = (activeCat.cat || '').toLowerCase().trim();   
-        const aName = (activeCat.name || '').toLowerCase().trim(); 
-
-        // THE FIX: If the product has no category in the database, 
-        // stop it from automatically matching every tab.
+        
         if (!pCat) return false; 
 
-        // Smart matching that is now immune to empty-string bugs
-        const matchesCat = 
-          pCat === aCat || 
-          pCat === aName || 
-          (aCat && pCat.includes(aCat)) || 
-          (aName && pCat.includes(aName)) ||
-          aName.includes(pCat) ||
-          aCat.includes(pCat);
+        
+        let matchesCat = pCat.includes(aCat) || aCat.includes(pCat);
+        if (!matchesCat && categoryMap[aCat]) {
+          matchesCat = categoryMap[aCat].some(keyword => pCat.includes(keyword));
+        }
           
         const matchesSub = sub === 'All' ? true : p.brand === sub;
         
@@ -104,10 +106,8 @@ const products = useMemo(() => {
       });
     }
 
-    // Safely calculate unit prices
     const unit = (x: GroceryProduct) => unitPrice(x.price || 0, x.size_value || 1, (x.size_unit as any) || 'pc').value;
     
-    // Sorting
     l = [...l].sort((a, b) => {
       const aPrice = a.price || 0;
       const bPrice = b.price || 0;
@@ -123,8 +123,7 @@ const products = useMemo(() => {
     });
     
     return l;
-  }, [initialProducts, activeCat, sub, sort, q]);
-  
+  }, [initialProducts, activeCat, sub, sort, q]);  
   
   
   const basket = useMemo(() => {
@@ -221,10 +220,7 @@ const products = useMemo(() => {
             </label>
           </div>
 
-          <div style={{ padding: 10, background: '#000', color: '#0f0', fontFamily: 'monospace', marginBottom: 20 }}>
-  <strong>RAW DB CATEGORIES:</strong><br/>
-  {Array.from(new Set(initialProducts.map(p => p.category))).join(' | ')}
-</div>
+
 
           {products.length ? (
             <div style={{ display: 'grid', gap: 12 }}>{products.map(p => <GroceryCard key={p.id} p={p} />)}</div>
