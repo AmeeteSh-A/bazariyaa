@@ -7,6 +7,7 @@ import { money, sparkPoints } from '@/utils/format';
 export function ProductCard({ p }: { p: Product }) {
   const inr = (n: number) => money(n, p.currency);
   const trend = p.trend === 'down' ? '↓ dropping' : p.trend === 'up' ? '↑ rising' : '→ stable';
+  
   return (
     <article className="card card--hover pcard">
       <Link 
@@ -33,7 +34,11 @@ export function ProductCard({ p }: { p: Product }) {
         <div className="pcard__foot">
           <div>
             <div className="pcard__price">{inr(p.price)}</div>
-            <div style={{ fontSize: 12 }}><s className="faint">{inr(p.mrp)}</s> <span className="muted">{trend}</span></div>
+            <div style={{ fontSize: 12 }}>
+          
+              {p.mrp > p.price && <><s className="faint">{inr(p.mrp)}</s>{' '}</>}
+              <span className="muted">{trend}</span>
+            </div>
           </div>
           <svg width="76" height="30" viewBox="0 0 76 30" preserveAspectRatio="none" aria-hidden="true">
             <polyline points={sparkPoints(p.history, 76, 30)} fill="none" stroke="#787574" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />

@@ -38,10 +38,11 @@ export function toUiProduct(p: DbProduct): UiProduct & { images?: string[] } {
     trust: parseInt(p.real, 10) || 90,
     value: 8.5,
     trend: p.trend === 'flat' || !p.trend ? 'stable' : p.trend,
+    trendPct: p.trendPct || 0, 
     history,
     icon: ICONS[category],
     currency,
     image: p.images[0], 
-    images: p.images,  
+    images: p.images,
   };
 }

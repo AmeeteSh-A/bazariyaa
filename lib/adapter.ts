@@ -11,6 +11,7 @@ export type Product = {
   numericPrice: number;
   was?: string;
   trend?: "down" | "up" | "flat";
+  trendPct: number; // Added to handle real percentages
   cta: "compare-on" | "compare-off" | "view";
   images: string[];
   specs: [string, string][];
@@ -33,22 +34,50 @@ function parseBsonNumber(val: any): number {
 }
 
 export function normalizeAmazonData(raw: any, historyDoc: any): Product {
-  const priceVal = parseBsonNumber(raw.price ?? raw.selected_variant?.price);
-  const msrpVal = parseBsonNumber(raw.msrp ?? raw.original_price);
+  // Aggressively hunt for the price across multiple possible scraper keys
+  const rawPrice = raw.price ?? raw.selling_price ?? raw.sale_price ?? raw.current_price ?? raw.selected_variant?.price;
+  const priceVal = parseBsonNumber(rawPrice);
+  
+  const rawMrp = raw.msrp ?? raw.original_price ?? raw.regular_price ?? raw.was_price;
+  const msrpVal = parseBsonNumber(rawMrp);
   
   const rawHistory = historyDoc?.history || [];
-  const historyPrices = rawHistory.map((h: any) => parseBsonNumber(h.price));
-  const lastPrice = historyPrices.length > 1 ? historyPrices[historyPrices.length - 2] : priceVal;
+  // Filter out bad history points where price is 0
+  const historyPrices = rawHistory.map((h: any) => parseBsonNumber(h.price)).filter((p: number) => p > 0);
+  const lastPrice = historyPrices.length > 0 ? historyPrices[historyPrices.length - 1] : priceVal;
   
   let trend: "up" | "down" | "flat" = "flat";
-  if (priceVal > lastPrice) trend = "up";
-  if (priceVal < lastPrice) trend = "down";
-
-  const ratingMatch = raw.attributes?.['Customer Reviews']?.match(/([\d.]+)\s+out of/);
-  const rating = ratingMatch ? parseFloat(ratingMatch[1]) : parseFloat(raw.rating || "0");
+  let trendPct = 0;
   
+  // Calculate real trend percentage
+  if (lastPrice > 0 && priceVal !== lastPrice) {
+    trendPct = Math.round(((priceVal - lastPrice) / lastPrice) * 100);
+    if (trendPct > 0) trend = "up";
+    if (trendPct < 0) trend = "down";
+  }
+
+  let rating = 0;
+  const ratingMatch = raw.attributes?.['Customer Reviews']?.match(/([\d.]+)\s+out of/);
+  if (ratingMatch) {
+    rating = parseFloat(ratingMatch[1]);
+  } else if (raw.rating) {
+    rating = parseFloat(raw.rating);
+  }
+  if (isNaN(rating)) rating = 0;
+  
+  let reviews = "0";
   const reviewsMatch = raw.attributes?.['Customer Reviews']?.match(/\(([\d,]+)\)/);
-  const reviews = reviewsMatch ? reviewsMatch[1] : "0";
+  if (reviewsMatch) {
+    reviews = reviewsMatch[1];
+  } else if (raw.reviews) {
+    reviews = String(raw.reviews);
+  }
+
+  const discount = msrpVal > priceVal ? ((msrpVal - priceVal) / msrpVal) * 100 : 0;
+  const buyScore = Math.min(99, Math.max(70, Math.round(75 + (rating * 3.5) + (discount * 0.2))));
+  
+  const parsedReviews = parseInt(reviews.replace(/,/g, '')) || 0;
+  const realScore = parsedReviews > 100 ? 95 : (parsedReviews > 10 ? 85 : 75);
 
   const cat = raw.categories?.[1]?.name || "Uncategorized";
   const id = raw._id?.$oid || raw._id || raw.id || raw.product_id;
@@ -71,17 +100,18 @@ export function normalizeAmazonData(raw: any, historyDoc: any): Product {
 
   return {
     id: String(id),
-    buy: Math.floor(Math.random() * 20) + 80,
+    buy: buyScore,
     tag: cat.toUpperCase(),
     cat: cat,
     name: raw.product_title || raw.title || "Unknown Product",
     rating: rating,
     reviews: reviews,
-    real: "90%",
+    real: `${realScore}%`,
     price: `${raw.currency_code || 'AED'} ${priceVal}`,
     numericPrice: priceVal,
     was: msrpVal > 0 ? `${raw.currency_code || 'AED'} ${msrpVal}` : undefined,
     trend: trend,
+    trendPct: Math.abs(trendPct), // Send the absolute percentage to the UI
     cta: "view",
     images: imgList,
     specs: specs,
@@ -90,19 +120,34 @@ export function normalizeAmazonData(raw: any, historyDoc: any): Product {
 }
 
 export function normalizeSharafDGData(raw: any, historyDoc: any): Product {
-  const priceVal = parseBsonNumber(raw.sale_price ?? raw.price);
-  const msrpVal = parseBsonNumber(raw.msrp ?? raw.original_price);
+  const rawPrice = raw.sale_price ?? raw.price ?? raw.selling_price;
+  const priceVal = parseBsonNumber(rawPrice);
+  const rawMrp = raw.msrp ?? raw.original_price ?? raw.was_price;
+  const msrpVal = parseBsonNumber(rawMrp);
   
   const rawHistory = historyDoc?.history || [];
-  const historyPrices = rawHistory.map((h: any) => parseBsonNumber(h.price));
-  const lastPrice = historyPrices.length > 1 ? historyPrices[historyPrices.length - 2] : priceVal;
+  const historyPrices = rawHistory.map((h: any) => parseBsonNumber(h.price)).filter((p: number) => p > 0);
+  const lastPrice = historyPrices.length > 0 ? historyPrices[historyPrices.length - 1] : priceVal;
   
   let trend: "up" | "down" | "flat" = "flat";
-  if (priceVal > lastPrice) trend = "up";
-  if (priceVal < lastPrice) trend = "down";
+  let trendPct = 0;
 
-  const rating = parseFloat(raw.average_rating || "0");
+  if (lastPrice > 0 && priceVal !== lastPrice) {
+    trendPct = Math.round(((priceVal - lastPrice) / lastPrice) * 100);
+    if (trendPct > 0) trend = "up";
+    if (trendPct < 0) trend = "down";
+  }
+
+  let rating = parseFloat(raw.average_rating);
+  if (isNaN(rating)) rating = 0;
+  
   const reviews = raw.number_of_reviews?.toString() || "0";
+
+  const discount = msrpVal > priceVal ? ((msrpVal - priceVal) / msrpVal) * 100 : 0;
+  const buyScore = Math.min(99, Math.max(70, Math.round(75 + (rating * 3.5) + (discount * 0.2))));
+  
+  const parsedReviews = parseInt(reviews.replace(/,/g, '')) || 0;
+  const realScore = parsedReviews > 100 ? 95 : (parsedReviews > 10 ? 85 : 75);
 
   const cat = raw.category2 || raw.category || "Uncategorized";
   const id = raw._id?.$oid || raw._id || raw.id || raw.product_id;
@@ -116,17 +161,18 @@ export function normalizeSharafDGData(raw: any, historyDoc: any): Product {
 
   return {
     id: String(id),
-    buy: Math.floor(Math.random() * 20) + 80,
+    buy: buyScore,
     tag: cat.toUpperCase(),
     cat: cat,
     name: raw.product_title || raw.title || "Unknown Product",
     rating: rating,
     reviews: reviews,
-    real: "90%",
+    real: `${realScore}%`,
     price: `${raw.currency || 'AED'} ${priceVal}`,
     numericPrice: priceVal,
     was: msrpVal > 0 ? `${raw.currency || 'AED'} ${msrpVal}` : undefined,
     trend: trend,
+    trendPct: Math.abs(trendPct),
     cta: "view",
     images: raw.images || (raw.product_image ? [raw.product_image] : []),
     specs: specs,

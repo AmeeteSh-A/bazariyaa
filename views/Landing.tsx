@@ -6,12 +6,11 @@ import SearchBar from '@/components/SearchBar';
 import { ProductCard } from '@/components/ProductCard';
 import { FaqList } from '@/components/FaqList';
 import { CheckIcon, ChevronRight, ThumbIcon } from '@/components/Icons';
-import { LANDING_CATEGORIES, LANDING_FAQS, TESTIMONIALS, TICKERS } from '@/data/products';
+import { LANDING_CATEGORIES, LANDING_FAQS, TESTIMONIALS } from '@/data/products';
 import type { Category, Product } from '@/types';
 import { money, sparkPoints } from '@/utils/format';
 
 const FILTERS: Array<'All' | Category> = ['All', 'Mobiles', 'Audio', 'Laptops', 'Home', 'Wearables', 'Cameras'];
-const MOVES = ['↑ 24%', '↑ 12%', 'NEW', '↑ 8%', '↓ 3%', '↑ 5%'];
 
 function useCountUp(target: number, ms = 1400) {
   const [v, setV] = useState(0);
@@ -33,7 +32,7 @@ function Stat({ target, decimals = 0, prefix = '', suffix = '', label }: { targe
   const v = useCountUp(target);
   return (
     <div>
-      <div className="v">{prefix}{decimals ? v.toFixed(decimals) : Math.round(v).toLocaleString('en-IN')}{suffix}</div>
+      <div className="v">{prefix}{decimals ? v.toFixed(decimals) : Math.round(v).toLocaleString('en-AE')}{suffix}</div>
       <div className="l">{label}</div>
     </div>
   );
@@ -47,24 +46,44 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
 
+  const [dynamicTickers, setDynamicTickers] = useState<string[]>(['Waiting for live shopping data...']);
+
+  useEffect(() => {
+    if (!PRODUCTS.length) return;
+    const actions = ['just checked', 'is comparing', 'tracked a price drop on'];
+    const locations = ['Dubai', 'Abu Dhabi', 'Sharjah', 'Ajman'];
+    
+    const generated = PRODUCTS.slice(0, 6).map(p => {
+      const act = actions[Math.floor(Math.random() * actions.length)];
+      const loc = locations[Math.floor(Math.random() * locations.length)];
+      return `Someone in ${loc} ${act} ${p.name}`;
+    });
+    
+    setDynamicTickers(generated);
+  }, [PRODUCTS]);
+
   useEffect(() => { 
-    const i = setInterval(() => setTick(t => (t + 1) % TICKERS.length), 3000); 
+    if (dynamicTickers.length === 0) return;
+    const i = setInterval(() => setTick(t => (t + 1) % dynamicTickers.length), 3000); 
     return () => clearInterval(i); 
-  }, []);
+  }, [dynamicTickers]);
   
   const list = useMemo(() => (filter === 'All' ? PRODUCTS : PRODUCTS.filter(p => p.category === filter)), [filter, PRODUCTS]);
   const t = TESTIMONIALS[tIdx];
 
-  const dealsData = PRODUCTS.slice(0, 3).map((p, i) => ({
-    p,
-    win: ['3 months', '6 months', '30 days'][i] || '30 days',
-    verdict: ['Great price', 'Lowest ever', 'Wait — rising'][i] || 'Good time to buy',
-    good: i !== 2,
-    rets: [['Amazon AE', 'Sharaf DG', 'Noon'], ['Sharaf DG', 'Amazon AE', 'Carrefour'], ['Noon', 'Amazon AE', 'Carrefour']][i] || ['Amazon AE']
-  }));
+  const dealsData = PRODUCTS.filter(p => p.trend === 'down' || p.trendPct > 0).slice(0, 3).map((p) => {
+    const isSteepDrop = p.trendPct > 5;
+    return {
+      p,
+      win: '30 days',
+      verdict: isSteepDrop ? 'Lowest ever' : 'Great price',
+      good: true,
+      rets: ['Amazon AE', 'Sharaf DG', 'Noon']
+    };
+  });
 
   return (
-    <>
+    <div style={{ overflowX: 'hidden' }}>
       <div className="container" id="top">
         <section className="hero">
           <div className="hero__copy">
@@ -77,8 +96,8 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
               {['Laptops under 3000 AED', 'Best air fryer', 'Noise-cancelling buds', 'Sunflower oil'].map(q => <span key={q} className="chip">{q}</span>)}
             </div>
           </div>
-          <div>
-            <div className="card feed">
+          <div style={{ minWidth: 0 }}>
+            <div className="card feed" style={{ maxWidth: '100%', overflow: 'hidden' }}>
               <div className="feed__head">
                 <div><div className="faint" style={{ fontSize: 11, textTransform: 'uppercase', fontWeight: 500 }}>Trending right now</div><div className="h3" style={{ marginTop: 4 }}>What people are buying</div></div>
                 <span className="live">LIVE</span>
@@ -90,20 +109,31 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
                 </div>
               )}
 
-              {PRODUCTS.slice(0, 6).map((p, i) => (
-                <Link key={p.id} href={'/product/' + p.slug} className="feed__row">
-                  <span className="feed__rank">{i + 1}</span>
-                  <span className="feed__thumb" style={{ background: 'var(--canvas)', overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
-  {p.image ? <img src={p.image} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : p.icon}
-</span>
-                  <span style={{ flex: 1, minWidth: 0 }}>
-                    <span style={{ display: 'block', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.brand} {p.name}</span>
-                    <span className="muted" style={{ fontSize: 12 }}>{p.category} · <b style={{ color: '#000', fontWeight: 500 }}>{money(p.price, p.currency)}</b></span>
-                  </span>
-                  <span className={'badge' + (MOVES[i] === 'NEW' ? '' : ' badge--white')}>{MOVES[i] || 'LIVE'}</span>
-                </Link>
-              ))}
-              <div className="feed__ticker" aria-live="polite"><span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--violet)' }} />{TICKERS[tick]}</div>
+              {PRODUCTS.slice(0, 6).map((p, i) => {
+                const trendBadge = p.trendPct > 0 
+                  ? (p.trend === 'down' ? `↓ ${p.trendPct}%` : `↑ ${p.trendPct}%`) 
+                  : 'NEW';
+                  
+                return (
+                  <Link key={p.id} href={'/product/' + p.slug} className="feed__row" style={{ minWidth: 0 }}>
+                    <span className="feed__rank" style={{ flexShrink: 0 }}>{i + 1}</span>
+                    <div className="feed__thumb" style={{ background: 'var(--canvas)', overflow: 'hidden', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      {p.image ? <img src={p.image} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : p.icon}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ display: 'block', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.brand} {p.name}</span>
+                      <span className="muted" style={{ fontSize: 12, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {p.category} · <b style={{ color: '#000', fontWeight: 500 }}>{money(p.price, p.currency)}</b>
+                      </span>
+                    </div>
+                    <span className={'badge' + (p.trend === 'up' ? ' badge--white' : '')} style={{ flexShrink: 0 }}>{trendBadge}</span>
+                  </Link>
+                );
+              })}
+              <div className="feed__ticker" aria-live="polite" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--violet)', flexShrink: 0 }} />
+                <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{dynamicTickers[tick]}</span>
+              </div>
             </div>
             <div className="trustline">
               {['No paid rankings', 'Verified reviews', 'Updated hourly'].map(x => <span key={x} className="row" style={{ gap: 6 }}><CheckIcon size={15} color="var(--violet)" />{x}</span>)}
@@ -155,9 +185,9 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
           <div className="grid g3">
             {[['🛡️', '94', 'Review Trust Score', 'Share of reviews from genuine, verified buyers — fake and coordinated reviews filtered out.', 94], ['💎', '8.8', 'Value for Money', 'How much you get per unit versus every comparable product, updated as prices move.', 88], ['👍', '96%', 'Recommended', 'One honest number combining trust, value, price fairness and reliability.', 96]].map(([ic, n, ti, body, bar]) => (
               <div key={ti as string} className="card card--pad score-card">
-                <div className="row" style={{ justifyContent: 'space-between' }}><div className="cat-card__ic" style={{ margin: 0 }}>{ic}</div><div className="num">{n}</div></div>
-                <h3 className="h3" style={{ fontSize: 18, margin: '16px 0 8px' }}>{ti}</h3>
-                <p className="muted" style={{ margin: 0, fontSize: 14.5, lineHeight: 1.5 }}>{body}</p>
+                <div className="row" style={{ justifyContent: 'space-between' }}><div className="cat-card__ic" style={{ margin: 0 }}>{ic as string}</div><div className="num">{n as string}</div></div>
+                <h3 className="h3" style={{ fontSize: 18, margin: '16px 0 8px' }}>{ti as string}</h3>
+                <p className="muted" style={{ margin: 0, fontSize: 14.5, lineHeight: 1.5 }}>{body as string}</p>
                 <div className="bar"><span style={{ width: bar as number + '%' }} /></div>
               </div>
             ))}
@@ -172,12 +202,21 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
             <div className="grid g3">
               {dealsData.map(({ p, win, verdict, good, rets }) => (
                 <div key={p.id} className="card card--pad" style={{ display: 'flex', flexDirection: 'column' }}>
-                  <div className="row"><span className="feed__thumb" style={{ background: 'var(--canvas)', overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
-  {p.image ? <img src={p.image} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : p.icon}
-</span><div><div style={{ fontWeight: 600 }}>{p.brand} {p.name}</div><div className="muted" style={{ fontSize: 12.5 }}>{p.category}</div></div></div>
+                  <div className="row" style={{ minWidth: 0 }}>
+                    <div className="feed__thumb" style={{ background: 'var(--canvas)', overflow: 'hidden', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      {p.image ? <img src={p.image} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : p.icon}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.brand} {p.name}</div>
+                      <div className="muted" style={{ fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.category}</div>
+                    </div>
+                  </div>
                   <svg width="100%" height="70" viewBox="0 0 260 70" preserveAspectRatio="none" style={{ margin: '24px 0 8px' }} aria-hidden="true"><polyline points={sparkPoints(p.history, 260, 70, 8)} fill="none" stroke="#787574" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
                   <div className="row" style={{ justifyContent: 'space-between', marginBottom: 16 }}>
-                    <div><div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.035em' }}>{money(p.price, p.currency)}</div><div className="muted" style={{ fontSize: 12.5 }}>lowest in {win}</div></div>
+                    <div>
+                      <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: '-0.035em' }}>{money(p.price, p.currency)}</div>
+                      <div className="muted" style={{ fontSize: 12.5 }}>lowest in {win}</div>
+                    </div>
                     <span className={'badge' + (good ? '' : ' badge--white')}>{verdict}</span>
                   </div>
                   <Link href={'/product/' + p.slug} className={'btn btn--block ' + (good ? 'btn--primary' : 'btn--secondary')}>{good ? 'Buy now' : 'Set price alert'}</Link>
@@ -245,6 +284,6 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
           </div>
         </div>
       </div></section>
-    </>
+    </div>
   );
 }

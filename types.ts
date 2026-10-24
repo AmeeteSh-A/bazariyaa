@@ -37,9 +37,9 @@ export interface Product {
   trust: number;
   value: number;
   trend: 'down' | 'up' | 'stable';
+  trendPct: number;
   history: number[];
   icon: string;
-  /** ISO code; defaults to INR for static data. Live Supabase rows may be AED. */
   currency?: string;
   image?: string;
   images?: string[];
