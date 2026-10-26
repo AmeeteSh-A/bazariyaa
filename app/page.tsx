@@ -27,7 +27,7 @@ export default async function Page() {
 
       const allNormalized = rawProducts.map(row => {
         const hist = historyMap.get(row.id) || null;
-        return normalizeProduct(row.data, hist);
+        return normalizeProduct(row.data, hist, row.id); // <-- Added row.id here
       });
 
       allNormalized.sort((a, b) => b.buy - a.buy);

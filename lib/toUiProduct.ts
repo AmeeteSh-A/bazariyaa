@@ -17,7 +17,8 @@ function toCategory(cat: string): Category {
 
 export function toUiProduct(p: DbProduct): UiProduct & { images?: string[] } {
   const category = toCategory(p.cat);
-  const currency = p.price.split(' ')[0] || 'INR';
+  
+  const currency = p.price.split(' ')[0] || 'AED'; 
   const mrp = p.was ? parseFloat(p.was.replace(/[^0-9.]/g, '')) || p.numericPrice : p.numericPrice;
   const prices = p.history.map(h => h.price).filter(n => n > 0);
   const history = prices.length >= 2 ? prices : [p.numericPrice, p.numericPrice];
@@ -26,7 +27,9 @@ export function toUiProduct(p: DbProduct): UiProduct & { images?: string[] } {
   
   return {
     id: p.id,
-    slug: p.id, 
+    
+    slug: encodeURIComponent(p.id), 
+    
     name: rest.join(' ') || p.name,
     brand,
     category,

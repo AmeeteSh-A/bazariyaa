@@ -11,7 +11,7 @@ export type Product = {
   numericPrice: number;
   was?: string;
   trend?: "down" | "up" | "flat";
-  trendPct: number; // Added to handle real percentages
+  trendPct: number;
   cta: "compare-on" | "compare-off" | "view";
   images: string[];
   specs: [string, string][];
@@ -33,8 +33,7 @@ function parseBsonNumber(val: any): number {
   return 0;
 }
 
-export function normalizeAmazonData(raw: any, historyDoc: any): Product {
-  // Aggressively hunt for the price across multiple possible scraper keys
+export function normalizeAmazonData(raw: any, historyDoc: any, realId?: string): Product {
   const rawPrice = raw.price ?? raw.selling_price ?? raw.sale_price ?? raw.current_price ?? raw.selected_variant?.price;
   const priceVal = parseBsonNumber(rawPrice);
   
@@ -42,14 +41,12 @@ export function normalizeAmazonData(raw: any, historyDoc: any): Product {
   const msrpVal = parseBsonNumber(rawMrp);
   
   const rawHistory = historyDoc?.history || [];
-  // Filter out bad history points where price is 0
   const historyPrices = rawHistory.map((h: any) => parseBsonNumber(h.price)).filter((p: number) => p > 0);
   const lastPrice = historyPrices.length > 0 ? historyPrices[historyPrices.length - 1] : priceVal;
   
   let trend: "up" | "down" | "flat" = "flat";
   let trendPct = 0;
   
-  // Calculate real trend percentage
   if (lastPrice > 0 && priceVal !== lastPrice) {
     trendPct = Math.round(((priceVal - lastPrice) / lastPrice) * 100);
     if (trendPct > 0) trend = "up";
@@ -80,7 +77,8 @@ export function normalizeAmazonData(raw: any, historyDoc: any): Product {
   const realScore = parsedReviews > 100 ? 95 : (parsedReviews > 10 ? 85 : 75);
 
   const cat = raw.categories?.[1]?.name || "Uncategorized";
-  const id = raw._id?.$oid || raw._id || raw.id || raw.product_id;
+  
+  const id = realId || raw._id?.$oid || raw._id || raw.id || raw.product_id;
 
   const specs = Object.entries(raw.attributes || {})
     .filter(([key]) => key !== 'Customer Reviews' && key !== 'Best Sellers Rank')
@@ -111,7 +109,7 @@ export function normalizeAmazonData(raw: any, historyDoc: any): Product {
     numericPrice: priceVal,
     was: msrpVal > 0 ? `${raw.currency_code || 'AED'} ${msrpVal}` : undefined,
     trend: trend,
-    trendPct: Math.abs(trendPct), // Send the absolute percentage to the UI
+    trendPct: Math.abs(trendPct),
     cta: "view",
     images: imgList,
     specs: specs,
@@ -119,7 +117,7 @@ export function normalizeAmazonData(raw: any, historyDoc: any): Product {
   };
 }
 
-export function normalizeSharafDGData(raw: any, historyDoc: any): Product {
+export function normalizeSharafDGData(raw: any, historyDoc: any, realId?: string): Product {
   const rawPrice = raw.sale_price ?? raw.price ?? raw.selling_price;
   const priceVal = parseBsonNumber(rawPrice);
   const rawMrp = raw.msrp ?? raw.original_price ?? raw.was_price;
@@ -150,7 +148,8 @@ export function normalizeSharafDGData(raw: any, historyDoc: any): Product {
   const realScore = parsedReviews > 100 ? 95 : (parsedReviews > 10 ? 85 : 75);
 
   const cat = raw.category2 || raw.category || "Uncategorized";
-  const id = raw._id?.$oid || raw._id || raw.id || raw.product_id;
+  
+  const id = realId || raw._id?.$oid || raw._id || raw.id || raw.product_id;
 
   const specs = Object.entries(raw.product_specification || {}).slice(0, 12) as [string, string][];
 
@@ -180,12 +179,12 @@ export function normalizeSharafDGData(raw: any, historyDoc: any): Product {
   };
 }
 
-export function normalizeProduct(raw: any, historyDoc: any): Product {
+export function normalizeProduct(raw: any, historyDoc: any, realId?: string): Product {
   if (raw.site_name === 'amazon.ae' || raw.url?.includes('amazon')) {
-    return normalizeAmazonData(raw, historyDoc);
+    return normalizeAmazonData(raw, historyDoc, realId);
   }
   if (raw.site_name === 'sharafdg' || raw.url?.includes('sharafdg')) {
-    return normalizeSharafDGData(raw, historyDoc);
+    return normalizeSharafDGData(raw, historyDoc, realId);
   }
-  return normalizeAmazonData(raw, historyDoc);
+  return normalizeAmazonData(raw, historyDoc, realId);
 }

@@ -40,6 +40,8 @@ function buildRealSpec(rawJson: any, basePrice: number): PhoneSpec {
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  
+  const cleanId = decodeURIComponent(id);
 
   const supabase = serverSupabase();
   if (!supabase) notFound();
@@ -47,7 +49,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   const { data: raw } = await supabase
     .from('raw_products')
     .select('data')
-    .eq('id', id)
+    .eq('id', cleanId)
     .single();
         
   if (!raw) notFound();
@@ -55,11 +57,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   const { data: hist } = await supabase
     .from('raw_price_history')
     .select('data')
-    .ilike('id', `%${id}%`)
+    .ilike('id', `%${cleanId}%`)
     .limit(1)
     .single();
 
-  const dbProduct = normalizeProduct(raw.data, hist?.data ?? null);
+  // FIXED: Pass cleanId to force the adapter to use the clean Postgres ID
+  const dbProduct = normalizeProduct(raw.data, hist?.data ?? null, cleanId);
   const uiProduct = toUiProduct(dbProduct);
   
   const actualPrice = parseMongoNum(raw.data.price || raw.data.sale_price || raw.data.selling_price || raw.data.current_price);
@@ -71,7 +74,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
       price: actualPrice, 
       delivery: 'View on store', 
       inStock: raw.data.in_stock !== false,
-      url: raw.data.url || raw.data.product_url || raw.data.link || '#' // FIXED: Aggressively hunt for the real URL
+      url: raw.data.url || raw.data.product_url || raw.data.link || '#'
     }
   ];
 
@@ -109,12 +112,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
 
   const { data: altRaw } = await supabase
     .from('raw_products')
-    .select('data')
+    .select('id, data')
     .neq('id', id)
     .ilike('data->>brand', `%${raw.data.brand || ''}%`)
     .limit(4);
         
-  const alternatives = (altRaw || []).map(r => toUiProduct(normalizeProduct(r.data, null)));
+  const alternatives = (altRaw || []).map(r => toUiProduct(normalizeProduct(r.data, null, r.id)));
   const baseSpec = buildRealSpec(raw.data, actualPrice);
   const availableSpecs = (altRaw || []).map(r => buildRealSpec(r.data, parseMongoNum(r.data.price || r.data.sale_price || r.data.selling_price)));
 
