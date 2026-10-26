@@ -24,7 +24,11 @@ export default function ProductView({
   cons = [],
   reviewsData = [],
   faqs = [],
-  videos = []
+  videos = [],
+  currentColor = '',
+  currentStorage = '',
+  colorVariants = [],
+  storageVariants = []
 }: { 
   product: Product & { images?: string[] }; 
   baseSpec?: ProductSpec;
@@ -37,6 +41,10 @@ export default function ProductView({
   reviewsData?: Review[];
   faqs?: Faq[];
   videos?: any[];
+  currentColor?: string;
+  currentStorage?: string;
+  colorVariants?: { label: string; id: string }[];
+  storageVariants?: { label: string; id: string }[];
 }) {
   const inr = (n: number) => money(n, p.currency);
   const cmp = useCompare();
@@ -52,15 +60,10 @@ export default function ProductView({
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const dbColor = specs.find(([k]) => k.toLowerCase().includes('color') || k.toLowerCase().includes('colour'))?.[1];
-  const dbStorage = specs.find(([k]) => k.toLowerCase().includes('storage') || k.toLowerCase().includes('capacity') || k.toLowerCase().includes('ram'))?.[1];
-
   const price = p.price;
   const mrp = p.mrp > p.price ? p.mrp : p.price;
-  
   const lowest = (offers[0] || { retailer: 'Store', price: p.price, delivery: 'Check store', url: '#' }) as RetailerOffer & { url?: string };
   const reviews = reviewFilter === 'all' ? reviewsData : reviewsData.filter(r => r.badge === reviewFilter);
-
   const realImages = p.images?.length ? p.images : (p.image ? [p.image] : []);
   const hasImages = realImages.length > 0;
 
@@ -78,12 +81,7 @@ export default function ProductView({
           <div>
             <div className="gallery__main" style={{ position: 'relative', background: 'var(--canvas)', borderRadius: 16, overflow: 'hidden', aspectRatio: '1/1', display: 'grid', placeItems: 'center' }}>
               {hasImages ? (
-                <img 
-                  src={realImages[thumb] || realImages[0]} 
-                  alt={p.name} 
-                  style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 24 }} 
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                />
+                <img src={realImages[thumb] || realImages[0]} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 24 }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
               ) : (
                 <span className="placeholder">{FALLBACK_THUMBS[thumb][0]}</span>
               )}
@@ -113,18 +111,39 @@ export default function ProductView({
             <h1 style={{ fontSize: 30, fontWeight: 600, letterSpacing: '-0.035em', margin: '4px 0 0' }}>{p.name}</h1>
             <div className="row" style={{ marginTop: 14 }}><strong>★ {p.rating}</strong><span className="muted" style={{ fontSize: 13 }}>{p.reviews} reviews</span><span className="badge">👍 {p.recommended}% Recommended</span></div>
 
-            {(dbColor || dbStorage) && (
+            {/* DYNAMIC ROUTING VARIANTS */}
+            {(currentColor || colorVariants.length > 0 || currentStorage || storageVariants.length > 0) && (
               <div className="variants">
-                {dbColor && (
+                {(currentColor || colorVariants.length > 0) && (
                   <>
-                    <div className="variant-label">Verified Colour</div>
-                    <div className="row"><span className="chip chip--soft" aria-pressed="true">{dbColor}</span></div>
+                    <div className="variant-label">Colour</div>
+                    <div className="row">
+                      {currentColor && (
+                        <span className="chip chip--soft" aria-pressed="true" style={{ textTransform: 'capitalize' }}>{currentColor}</span>
+                      )}
+                      {colorVariants.map(cv => (
+                        <Link key={cv.id} href={`/product/${encodeURIComponent(cv.id)}`} className="chip" style={{ textTransform: 'capitalize', textDecoration: 'none' }}>
+                          {cv.label}
+                        </Link>
+                      ))}
+                    </div>
                   </>
                 )}
-                {dbStorage && (
+                {(currentStorage || storageVariants.length > 0) && (
                   <>
-                    <div className="variant-label">Verified Spec</div>
-                    <div className="row"><span className="chip chip--soft" aria-pressed="true">{dbStorage}</span></div>
+                    <div className="variant-label">Spec / Size</div>
+                    <div className="row" style={{ flexWrap: 'nowrap', overflowX: 'auto' }}>
+                      {currentStorage && (
+                        <span className="storage" aria-pressed="true" style={{ textTransform: 'uppercase' }}>
+                          <b style={{ display: 'block', fontSize: 13.5 }}>{currentStorage}</b>
+                        </span>
+                      )}
+                      {storageVariants.map(sv => (
+                        <Link key={sv.id} href={`/product/${encodeURIComponent(sv.id)}`} className="storage" style={{ textDecoration: 'none' }}>
+                          <b style={{ display: 'block', fontSize: 13.5, textTransform: 'uppercase' }}>{sv.label}</b>
+                        </Link>
+                      ))}
+                    </div>
                   </>
                 )}
               </div>
@@ -150,7 +169,7 @@ export default function ProductView({
                 ))}
               </div>
               <a href={lowest.url || '#'} target="_blank" rel="noreferrer" className="btn btn--primary btn--block" style={{ marginTop: 16, textDecoration: 'none' }}>
-                Buy now — {inr(price)} <span style={{ fontSize: 12, fontWeight: 500, color: '#CFC4F7' }}>at {lowest.retailer}</span>
+                Buy now — {inr(lowest.price)} <span style={{ fontSize: 12, fontWeight: 500, color: '#CFC4F7' }}>at {lowest.retailer}</span>
               </a>
               <button type="button" className="btn btn--secondary btn--block" style={{ marginTop: 10 }} aria-pressed={compared} onClick={() => cmp.toggle(p.id)}><CompareIcon size={16} />{compared ? '✓ Added to compare' : 'Add to compare'}</button>
             </div>
