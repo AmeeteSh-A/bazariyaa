@@ -10,8 +10,6 @@ import { useCompare } from '@/context/CompareContext';
 import type { Product, PhoneSpec, RetailerOffer, Review, Faq } from '@/types';
 import { discountPct, money, sparkPoints } from '@/utils/format';
 
-const COLORS = [{ name: 'Obsidian', swatch: '#2A2A2E' }, { name: 'Silver', swatch: '#D6D8DB' }, { name: 'Forest', swatch: '#3B5A45' }];
-const STORAGE = [{ name: '256GB', sub: '12GB RAM', add: 0 }, { name: '512GB', sub: '16GB RAM', add: 8000 }];
 const FALLBACK_THUMBS = [['📱', 'Front view'], ['🔄', 'Back view'], ['📐', 'Side profile'], ['🤳', 'In hand'], ['🏡', 'Lifestyle']];
 const TABS = ['Overview', 'Price', 'Specs', 'Reviews', 'Alternatives', 'FAQ'];
 
@@ -45,8 +43,6 @@ export default function ProductView({
   const compared = cmp.has(p.id);
   const [thumb, setThumb] = useState(0);
   const [wished, setWished] = useState(false);
-  const [color, setColor] = useState(COLORS[0].name);
-  const [storage, setStorage] = useState(STORAGE[0].name);
   const [reviewFilter, setReviewFilter] = useState<'all' | 'Verified' | 'Expert'>('all');
   const [showBar, setShowBar] = useState(false);
 
@@ -56,15 +52,22 @@ export default function ProductView({
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  const add = STORAGE.find(s => s.name === storage)?.add ?? 0;
-  const price = p.price + add;
-  const mrp = p.mrp > p.price ? p.mrp + add : price;
+  const dbColor = specs.find(([k]) => k.toLowerCase().includes('color') || k.toLowerCase().includes('colour'))?.[1];
+  const dbStorage = specs.find(([k]) => k.toLowerCase().includes('storage') || k.toLowerCase().includes('capacity') || k.toLowerCase().includes('ram'))?.[1];
+
+  const price = p.price;
+  const mrp = p.mrp > p.price ? p.mrp : p.price;
   
   const lowest = (offers[0] || { retailer: 'Store', price: p.price, delivery: 'Check store', url: '#' }) as RetailerOffer & { url?: string };
   const reviews = reviewFilter === 'all' ? reviewsData : reviewsData.filter(r => r.badge === reviewFilter);
 
   const realImages = p.images?.length ? p.images : (p.image ? [p.image] : []);
   const hasImages = realImages.length > 0;
+
+  const validHistory = p.history.filter(h => h > 0);
+  const minPrice = validHistory.length > 0 ? Math.min(...validHistory, price) : price;
+  const avgPrice = validHistory.length > 0 ? Math.round(validHistory.reduce((a, b) => a + b, 0) / validHistory.length) : price;
+  const priceVerdict = price <= minPrice ? 'Lowest ever — Great time to buy' : price > avgPrice ? 'Price is high — Consider waiting' : 'Average price — Good to buy';
 
   return (
     <>
@@ -84,7 +87,7 @@ export default function ProductView({
               ) : (
                 <span className="placeholder">{FALLBACK_THUMBS[thumb][0]}</span>
               )}
-              <span className="badge" style={{ position: 'absolute', top: 16, left: 16 }}>✦ Editor's Choice</span>
+              <span className="badge" style={{ position: 'absolute', top: 16, left: 16 }}>✦ {p.category}</span>
               <div className="gallery__actions">
                 <button type="button" className={'icon-btn' + (compared ? ' icon-btn--on' : '')} aria-pressed={compared} aria-label="Add to compare" onClick={() => cmp.toggle(p.id)}><CompareIcon size={17} /></button>
                 <button type="button" className={'icon-btn' + (wished ? ' icon-btn--on' : '')} aria-pressed={wished} aria-label="Save to wishlist" onClick={() => setWished(w => !w)}><HeartIcon size={17} filled={wished} /></button>
@@ -110,12 +113,22 @@ export default function ProductView({
             <h1 style={{ fontSize: 30, fontWeight: 600, letterSpacing: '-0.035em', margin: '4px 0 0' }}>{p.name}</h1>
             <div className="row" style={{ marginTop: 14 }}><strong>★ {p.rating}</strong><span className="muted" style={{ fontSize: 13 }}>{p.reviews} reviews</span><span className="badge">👍 {p.recommended}% Recommended</span></div>
 
-            <div className="variants">
-              <div className="variant-label">Colour · {color}</div>
-              <div className="row">{COLORS.map(c => <button key={c.name} type="button" className="chip chip--soft" aria-pressed={c.name === color} onClick={() => setColor(c.name)}><span className="swatch" style={{ background: c.swatch }} />{c.name}</button>)}</div>
-              <div className="variant-label">Storage · {storage}</div>
-              <div className="row" style={{ flexWrap: 'nowrap' }}>{STORAGE.map(s => <button key={s.name} type="button" className="storage" aria-pressed={s.name === storage} onClick={() => setStorage(s.name)}><b style={{ display: 'block', fontSize: 13.5 }}>{s.name}</b><span className="muted" style={{ fontSize: 11.5 }}>{s.sub}</span></button>)}</div>
-            </div>
+            {(dbColor || dbStorage) && (
+              <div className="variants">
+                {dbColor && (
+                  <>
+                    <div className="variant-label">Verified Colour</div>
+                    <div className="row"><span className="chip chip--soft" aria-pressed="true">{dbColor}</span></div>
+                  </>
+                )}
+                {dbStorage && (
+                  <>
+                    <div className="variant-label">Verified Spec</div>
+                    <div className="row"><span className="chip chip--soft" aria-pressed="true">{dbStorage}</span></div>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="card buybox">
               <div className="buybox__price">
@@ -127,7 +140,7 @@ export default function ProductView({
                   </>
                 )}
               </div>
-              <div className="row muted" style={{ fontSize: 13, marginTop: 8 }}><CheckIcon size={15} color="var(--green)" />Lowest price in 3 months · at {lowest.retailer}</div>
+              <div className="row muted" style={{ fontSize: 13, marginTop: 8 }}><CheckIcon size={15} color="var(--green)" />{price <= minPrice ? 'Lowest recorded price' : 'Available across stores'}</div>
               <div className="row" style={{ marginTop: 12 }}>
                 <span className="faint" style={{ fontSize: 11 }}>Available at</span>
                 {offers.map((o, i) => (
@@ -151,7 +164,7 @@ export default function ProductView({
         <section className="section--tight" id="overview">
           <div className="card card--pad" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 24, alignItems: 'center' }}>
             <div style={{ textAlign: 'center' }}><div style={{ fontSize: 34, fontWeight: 600, letterSpacing: '-0.04em' }}>{p.recommended}%</div><div className="muted" style={{ fontSize: 12 }}>Recommended</div></div>
-            <div><span className="badge">✦ AI Summary</span><p style={{ margin: '10px 0 0', lineHeight: 1.55 }}>A near-flagship experience at an upper-mid price. Reviewers consistently praise all-day battery, genuinely fast charging and a bright 120Hz display. The main trade-off is an average ultrawide camera. With prices at a 3-month low and a strong {p.trust}% verified-review score, it's a confident buy right now.</p><p className="faint" style={{ fontSize: 12, margin: '8px 0 0' }}>Based on {p.reviews} verified reviews · 8 expert reviews · Updated 2 hours ago</p></div>
+            <div><span className="badge">✦ AI Summary</span><p style={{ margin: '10px 0 0', lineHeight: 1.55 }}>Based on current pricing patterns and available verified specs, this {p.brand} product offers solid value in the {p.category} category. It maintains a strong {p.trust}% verified-review score. {price <= minPrice ? "Given it's currently at its lowest recorded price, it is a confident buy." : "Prices fluctuate, but it remains a strong contender."}</p><p className="faint" style={{ fontSize: 12, margin: '8px 0 0' }}>Based on {p.reviews} verified ratings</p></div>
           </div>
           {(pros.length > 0 || cons.length > 0) && (
             <div className="grid g2" style={{ marginTop: 16 }}>
@@ -163,14 +176,13 @@ export default function ProductView({
 
         <section className="section--tight" id="price">
           <div className="card card--pad">
-            <h2 className="h3">Price history & prediction</h2><p className="sub">Last 6 months across all retailers · dashed = our 30-day forecast</p>
+            <h2 className="h3">Price history & prediction</h2><p className="sub">Recorded history across retailers</p>
             <svg width="100%" height="200" viewBox="0 0 700 200" preserveAspectRatio="none" style={{ marginTop: 16 }} aria-label="Price trend chart">
-              <polyline points={sparkPoints(p.history, 560, 200, 16)} fill="none" stroke="var(--violet)" strokeWidth="3" strokeLinecap="round" />
-              <line x1="544" y1="184" x2="690" y2="180" stroke="var(--violet)" strokeWidth="2.5" strokeDasharray="6 6" />
+              <polyline points={sparkPoints(validHistory, 560, 200, 16)} fill="none" stroke="var(--violet)" strokeWidth="3" strokeLinecap="round" />
             </svg>
             <div className="grid g4" style={{ marginTop: 16 }}>
-              {[['Current', inr(price)], ['Lowest ever', inr(price > 250 ? price - (price * 0.15) : price)], ['Average', inr(price + (price * 0.05))]].map(([l, v]) => <div key={l as string} className="card" style={{ padding: '14px 16px', borderRadius: 14 }}><div className="muted" style={{ fontSize: 12 }}>{l as string}</div><div style={{ fontSize: 18, fontWeight: 600 }}>{v as string}</div></div>)}
-              <div className="card" style={{ padding: '14px 16px', borderRadius: 14, background: 'var(--violet-soft)', borderColor: 'var(--violet-border)' }}><div style={{ fontSize: 12, color: 'var(--violet)', fontWeight: 500 }}>Bazariyaa verdict</div><div style={{ fontWeight: 600, fontSize: 14 }}>Good time to buy — forecast flat for 30 days</div></div>
+              {[['Current', inr(price)], ['Lowest ever', inr(minPrice)], ['Average', inr(avgPrice)]].map(([l, v]) => <div key={l as string} className="card" style={{ padding: '14px 16px', borderRadius: 14 }}><div className="muted" style={{ fontSize: 12 }}>{l as string}</div><div style={{ fontSize: 18, fontWeight: 600 }}>{v as string}</div></div>)}
+              <div className="card" style={{ padding: '14px 16px', borderRadius: 14, background: 'var(--violet-soft)', borderColor: 'var(--violet-border)' }}><div style={{ fontSize: 12, color: 'var(--violet)', fontWeight: 500 }}>Bazariyaa verdict</div><div style={{ fontWeight: 600, fontSize: 14 }}>{priceVerdict}</div></div>
             </div>
           </div>
         </section>
@@ -183,8 +195,7 @@ export default function ProductView({
                 <div key={o.retailer} className="offer">
                   <div className="row"><b>{o.retailer}</b>{i === 0 && <span className="badge badge--green">LOWEST</span>}</div>
                   <span className="muted" style={{ fontSize: 13 }}>{o.delivery}</span>
-                  <b>{inr(o.price + add)}</b>
-                  {/* FIXED: Make store comparison buttons actual links */}
+                  <b>{inr(o.price)}</b>
                   <a href={o.url || '#'} target="_blank" rel="noreferrer" className={'btn btn--sm ' + (i === 0 ? 'btn--primary' : 'btn--secondary')} style={{ textDecoration: 'none' }}>
                     {i === 0 ? 'Buy now' : 'Visit'}
                   </a>
@@ -215,7 +226,6 @@ export default function ProductView({
                   <div className="row" style={{ flexWrap: 'nowrap', marginBottom: 14 }}>
                     <span className="avatar" style={{ background: r.avatar, width: 42, height: 42 }}>{r.initials}</span>
                     <div style={{ flex: 1 }}><div className="row" style={{ gap: 6 }}><b>{r.name}</b><span className={'badge' + (r.badge === 'Verified' ? ' badge--green' : '')}>{r.badge}</span></div><div className="muted" style={{ fontSize: 12.5 }}>{r.meta}</div></div>
-                    {/* FIXED: Syntax error 5r.stars crashed the page */}
                     <span aria-label={r.stars + ' out of 5'}>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)}</span>
                   </div>
                   <p style={{ margin: '0 0 14px', lineHeight: 1.55, color: 'var(--ink-2)' }}>{r.text}</p>
