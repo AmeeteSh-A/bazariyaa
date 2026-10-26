@@ -3,7 +3,7 @@ import ProductView from '@/views/Product';
 import { normalizeProduct } from '@/lib/adapter';
 import { toUiProduct } from '@/lib/toUiProduct';
 import { serverSupabase } from '@/lib/supabaseServer';
-import type { PhoneSpec } from '@/types';
+import type { ProductSpec } from '@/types'; // FIXED: Switched to ProductSpec
 
 const parseMongoNum = (val: any): number => {
   if (!val) return 0;
@@ -13,28 +13,30 @@ const parseMongoNum = (val: any): number => {
   return parseFloat(val) || 0;
 };
 
-function buildRealSpec(rawJson: any, basePrice: number): PhoneSpec {
-  const attrs = rawJson.attributes || rawJson.specifications || {};
-  const mem = attrs.RAM || attrs.Memory || attrs['RAM Size'] || attrs['Installed RAM memory size'] || '';
-  const storage = attrs.Capacity || attrs.Storage || attrs['Hard disk size'] || attrs['Hard-Drive Size'] || '';
-  const ramStorage = [mem, storage].filter(Boolean).join(' / ') || '-';
-  const cameraFallback = attrs['Automatic Backup Software Included'] === 'Webcam' ? 'Webcam' : '-';
+function buildRealSpec(rawJson: any, basePrice: number, buyScore: number, trustScore: number): ProductSpec {
+  const rawFeatures = rawJson.attributes || rawJson.product_specification || rawJson.specifications || {};
+  const features: Record<string, string> = {};
+  
+  let count = 0;
+  for (const [key, value] of Object.entries(rawFeatures)) {
+    if (count >= 10) break;
+    if (typeof value === 'string' && value.trim().length > 0 && value.length < 60 && key !== 'Customer Reviews' && key !== 'Best Sellers Rank') {
+      features[key] = value.trim();
+      count++;
+    }
+  }
+
 
   return {
     id: rawJson._id || rawJson.product_id || 'unknown',
     name: rawJson.product_name || rawJson.title || 'Unknown Product',
     brand: rawJson.brand || 'Brand',
-    buy: 85,
+    image: rawJson.images?.[0] || rawJson.product_image || rawJson.main_image,
     price: basePrice,
-    value: 8.5,
-    trust: 92,
-    display: attrs.Display || attrs['Screen size'] || attrs.Size || attrs['Screen Size'] || '-',
-    processor: attrs.Chip || attrs.CPU || attrs['CPU model'] || attrs['Processor Series'] || '-',
-    ramStorage: ramStorage,
-    battery: attrs.Battery || attrs['Power and Battery'] || attrs['Battery Life'] || '-',
-    camera: attrs.Camera || attrs.Rear || attrs.Front || cameraFallback,
-    charging: attrs['Wired charging'] || attrs.Charging || attrs['Fast charging'] || '-',
-    warranty: attrs.Warranty || '-'
+    buy: buyScore,
+    value: parseFloat((buyScore / 10).toFixed(1)), // Scale buy score to a /10 value score
+    trust: trustScore,
+    features
   };
 }
 
@@ -61,7 +63,6 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
     .limit(1)
     .single();
 
-  // FIXED: Pass cleanId to force the adapter to use the clean Postgres ID
   const dbProduct = normalizeProduct(raw.data, hist?.data ?? null, cleanId);
   const uiProduct = toUiProduct(dbProduct);
   
@@ -118,9 +119,11 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
     .limit(4);
         
   const alternatives = (altRaw || []).map(r => toUiProduct(normalizeProduct(r.data, null, r.id)));
-  const baseSpec = buildRealSpec(raw.data, actualPrice);
-  const availableSpecs = (altRaw || []).map(r => buildRealSpec(r.data, parseMongoNum(r.data.price || r.data.sale_price || r.data.selling_price)));
-
+  const baseSpec = buildRealSpec(raw.data, actualPrice, dbProduct.buy, parseInt(dbProduct.real) || 90);
+  const availableSpecs = (altRaw || []).map(r => {
+    const norm = normalizeProduct(r.data, null, r.id);
+    return buildRealSpec(r.data, norm.numericPrice, norm.buy, parseInt(norm.real) || 90);
+  });
   return (
     <ProductView
       product={uiProduct}

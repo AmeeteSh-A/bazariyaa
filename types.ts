@@ -45,21 +45,16 @@ export interface Product {
   images?: string[];
 }
 
-export interface PhoneSpec {
+export interface ProductSpec {
   id: string;
   name: string;
   brand: string;
+  image?: string;
   price: number;
   buy: number;
   value: number;
   trust: number;
-  display: string;
-  processor: string;
-  ramStorage: string;
-  battery: number;
-  camera: string;
-  charging: string;
-  warranty: string;
+  features: Record<string, string>;
 }
 
 export interface Review {

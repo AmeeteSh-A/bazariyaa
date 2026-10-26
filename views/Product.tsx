@@ -7,7 +7,7 @@ import { FaqList } from '@/components/FaqList';
 import { ProductCard } from '@/components/ProductCard';
 import { CheckIcon, CompareIcon, HeartIcon, InfoIcon, PlayIcon, ThumbIcon } from '@/components/Icons';
 import { useCompare } from '@/context/CompareContext';
-import type { Product, PhoneSpec, RetailerOffer, Review, Faq } from '@/types';
+import type { Product, ProductSpec, RetailerOffer, Review, Faq } from '@/types';
 import { discountPct, money, sparkPoints } from '@/utils/format';
 
 const FALLBACK_THUMBS = [['📱', 'Front view'], ['🔄', 'Back view'], ['📐', 'Side profile'], ['🤳', 'In hand'], ['🏡', 'Lifestyle']];
@@ -27,8 +27,8 @@ export default function ProductView({
   videos = []
 }: { 
   product: Product & { images?: string[] }; 
-  baseSpec?: PhoneSpec;
-  availableSpecs?: PhoneSpec[];
+  baseSpec?: ProductSpec;
+  availableSpecs?: ProductSpec[];
   offers?: RetailerOffer[];
   alternatives?: Product[];
   specs?: [string, string][];

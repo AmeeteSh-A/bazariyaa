@@ -1,41 +1,25 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { PhoneSpec } from '@/types';
+import type { ProductSpec } from '@/types';
 import { inr } from '@/utils/format';
 import { CloseIcon } from './Icons';
 
-type Key = keyof PhoneSpec;
-interface RowDef {
-  label: string;
-  note?: string;
-  key: Key;
-  fmt?: (v: never) => string;
-  best?: 'min' | 'max';
-}
-
-const ROWS: RowDef[] = [
+const BASE_ROWS = [
   { label: 'Buy Score', note: 'Bazariyaa overall', key: 'buy', fmt: (v: number) => v + '/100', best: 'max' },
   { label: 'Price', note: 'today, lowest store', key: 'price', fmt: (v: number) => inr(v), best: 'min' },
   { label: 'Value for money', note: 'per rupee', key: 'value', fmt: (v: number) => Number(v).toFixed(1) + '/10', best: 'max' },
   { label: 'Review trust', note: 'genuine reviews', key: 'trust', fmt: (v: number) => v + '%', best: 'max' },
-  { label: 'Display', key: 'display' },
-  { label: 'Processor', key: 'processor' },
-  { label: 'RAM & Storage', key: 'ramStorage' },
-  { label: 'Battery', key: 'battery', fmt: (v: number) => v + ' mAh', best: 'max' },
-  { label: 'Camera', key: 'camera' },
-  { label: 'Charging', key: 'charging' },
-  { label: 'Warranty', key: 'warranty' },
-];
+] as const;
 
 export function ComparisonMatrix({ 
   baseSpec, 
   availableSpecs = []
 }: { 
-  baseSpec?: PhoneSpec; 
-  availableSpecs?: PhoneSpec[]; 
+  baseSpec?: ProductSpec; 
+  availableSpecs?: ProductSpec[]; 
 }) {
-  const [extra, setExtra] = useState<PhoneSpec[]>([]);
+  const [extra, setExtra] = useState<ProductSpec[]>([]);
   
   if (!baseSpec) {
     return (
@@ -46,20 +30,25 @@ export function ComparisonMatrix({
     );
   }
 
-  // Combine base product with selected extras, max 4
   const cols = [baseSpec, ...extra].slice(0, 4);
-  
-  // Filter out products that are already in the comparison columns
-  const options = availableSpecs.filter(
-    spec => !cols.some(c => c.id === spec.id)
-  );
+  const options = availableSpecs.filter(spec => !cols.some(c => c.id === spec.id));
+
+  const dynamicFeatures = useMemo(() => {
+    const keys = new Set<string>();
+    cols.forEach(c => {
+      if (c.features) {
+        Object.keys(c.features).forEach(k => keys.add(k));
+      }
+    });
+    return Array.from(keys);
+  }, [cols]);
 
   const bestIdx = useMemo(() => {
-    const map: Partial<Record<Key, number>> = {};
+    const map: Record<string, number> = {};
     if (cols.length < 2) return map;
-    ROWS.forEach(r => {
+    BASE_ROWS.forEach(r => {
       if (!r.best) return;
-      const vals = cols.map(c => Number(c[r.key]) || 0);
+      const vals = cols.map(c => Number(c[r.key as keyof ProductSpec]) || 0);
       const target = r.best === 'min' ? Math.min(...vals) : Math.max(...vals);
       map[r.key] = vals.indexOf(target);
     });
@@ -97,12 +86,16 @@ export function ComparisonMatrix({
         <table>
           <thead>
             <tr>
-              <th style={{ width: 200 }}><span className="faint" style={{ fontSize: 11, textTransform: 'uppercase' }}>Comparing {cols.length} phones</span></th>
+              <th style={{ width: 200 }}><span className="faint" style={{ fontSize: 11, textTransform: 'uppercase' }}>Comparing {cols.length} items</span></th>
               {cols.map((c, i) => (
                 <th key={c.id} style={i === 0 ? { position: 'sticky', left: 200, zIndex: 1, background: 'var(--violet-soft)' } : undefined}>
                   <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap' }}>
                     <div>
-                      <div className="placeholder" style={{ width: 44, height: 44, borderRadius: 12, marginBottom: 10 }} />
+                      {c.image ? (
+                        <img src={c.image} alt={c.name} style={{ width: 44, height: 44, borderRadius: 12, marginBottom: 10, objectFit: 'contain', background: '#fff' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                      ) : (
+                        <div className="placeholder" style={{ width: 44, height: 44, borderRadius: 12, marginBottom: 10 }} />
+                      )}
                       <div className="muted" style={{ fontSize: 12, fontWeight: 500 }}>{c.brand}{i === 0 && ' • this product'}</div>
                       <div style={{ fontWeight: 600 }}>{c.name}</div>
                     </div>
@@ -116,9 +109,9 @@ export function ComparisonMatrix({
               ))}
               {cols.length < 4 && (
                 <th>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--violet)', marginBottom: 8 }} htmlFor="add-phone">+ Add a product</label>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--violet)', marginBottom: 8 }} htmlFor="add-product">+ Add a product</label>
                   <select 
-                    id="add-phone" 
+                    id="add-product" 
                     value="" 
                     onChange={e => {
                       const selected = options.find(o => o.id === e.target.value);
@@ -135,18 +128,29 @@ export function ComparisonMatrix({
             </tr>
           </thead>
           <tbody>
-            {ROWS.map(r => (
+            {BASE_ROWS.map(r => (
               <tr key={r.label}>
                 <td><b style={{ fontWeight: 600 }}>{r.label}</b>{r.note && <div className="faint" style={{ fontSize: 12 }}>{r.note}</div>}</td>
                 {cols.map((c, i) => {
-                  const raw = c[r.key] as never;
-                  const val = r.fmt ? r.fmt(raw) : String(raw || '-');
+                  const val = r.fmt ? r.fmt(c[r.key as keyof ProductSpec] as number) : String(c[r.key as keyof ProductSpec] || '-');
                   return (
                     <td key={c.id} style={i === 0 ? { position: 'sticky', left: 200, zIndex: 1, background: 'var(--violet-soft)' } : undefined}>
                       {bestIdx[r.key] === i ? <span className="best">{val}<em>BEST</em></span> : val}
                     </td>
                   );
                 })}
+                {cols.length < 4 && <td />}
+              </tr>
+            ))}
+            
+            {dynamicFeatures.map(feat => (
+              <tr key={feat}>
+                <td><b style={{ fontWeight: 600 }}>{feat}</b></td>
+                {cols.map((c, i) => (
+                  <td key={c.id} style={i === 0 ? { position: 'sticky', left: 200, zIndex: 1, background: 'var(--violet-soft)' } : undefined}>
+                    {c.features[feat] || '-'}
+                  </td>
+                ))}
                 {cols.length < 4 && <td />}
               </tr>
             ))}
