@@ -58,8 +58,9 @@ export default function ProductView({
 
   const add = STORAGE.find(s => s.name === storage)?.add ?? 0;
   const price = p.price + add;
-  const mrp = p.mrp + add;
-  const lowest = offers[0] || { retailer: 'Store', price: p.price, delivery: 'Check store' };
+  const mrp = p.mrp > p.price ? p.mrp + add : price;
+  
+  const lowest = (offers[0] || { retailer: 'Store', price: p.price, delivery: 'Check store', url: '#' }) as RetailerOffer & { url?: string };
   const reviews = reviewFilter === 'all' ? reviewsData : reviewsData.filter(r => r.badge === reviewFilter);
 
   const realImages = p.images?.length ? p.images : (p.image ? [p.image] : []);
@@ -74,7 +75,12 @@ export default function ProductView({
           <div>
             <div className="gallery__main" style={{ position: 'relative', background: 'var(--canvas)', borderRadius: 16, overflow: 'hidden', aspectRatio: '1/1', display: 'grid', placeItems: 'center' }}>
               {hasImages ? (
-                <img src={realImages[thumb] || realImages[0]} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 24 }} />
+                <img 
+                  src={realImages[thumb] || realImages[0]} 
+                  alt={p.name} 
+                  style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 24 }} 
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
               ) : (
                 <span className="placeholder">{FALLBACK_THUMBS[thumb][0]}</span>
               )}
@@ -88,7 +94,7 @@ export default function ProductView({
               {hasImages ? (
                 realImages.map((img, i) => (
                   <button key={i} type="button" className="gallery__thumb" aria-pressed={i === thumb} onClick={() => setThumb(i)} style={{ padding: 4, background: 'var(--canvas)', overflow: 'hidden' }}>
-                    <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    <img src={img} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
                   </button>
                 ))
               ) : (
@@ -99,7 +105,6 @@ export default function ProductView({
             </div>
           </div>
 
-          {/* Rest of the product details block */}
           <div>
             <div className="muted" style={{ fontSize: 13, fontWeight: 500 }}>{p.brand}</div>
             <h1 style={{ fontSize: 30, fontWeight: 600, letterSpacing: '-0.035em', margin: '4px 0 0' }}>{p.name}</h1>
@@ -115,8 +120,12 @@ export default function ProductView({
             <div className="card buybox">
               <div className="buybox__price">
                 <strong>{inr(price)}</strong>
-                <span className="buybox__mrp">{inr(mrp)}</span>
-                <span className="badge badge--green tip" tabIndex={0} style={{ marginBottom: 4, cursor: 'help' }}>{discountPct(price, mrp)}% OFF <InfoIcon size={12} /><span className="tip__pop" role="tooltip">You save {inr(mrp - price)} vs MRP</span></span>
+                {mrp > price && (
+                  <>
+                    <span className="buybox__mrp">{inr(mrp)}</span>
+                    <span className="badge badge--green tip" tabIndex={0} style={{ marginBottom: 4, cursor: 'help' }}>{discountPct(price, mrp)}% OFF <InfoIcon size={12} /><span className="tip__pop" role="tooltip">You save {inr(mrp - price)} vs MRP</span></span>
+                  </>
+                )}
               </div>
               <div className="row muted" style={{ fontSize: 13, marginTop: 8 }}><CheckIcon size={15} color="var(--green)" />Lowest price in 3 months · at {lowest.retailer}</div>
               <div className="row" style={{ marginTop: 12 }}>
@@ -127,7 +136,9 @@ export default function ProductView({
                   </span>
                 ))}
               </div>
-              <button type="button" className="btn btn--primary btn--block" style={{ marginTop: 16 }}>Buy now — {inr(price)} <span style={{ fontSize: 12, fontWeight: 500, color: '#CFC4F7' }}>at {lowest.retailer}</span></button>
+              <a href={lowest.url || '#'} target="_blank" rel="noreferrer" className="btn btn--primary btn--block" style={{ marginTop: 16, textDecoration: 'none' }}>
+                Buy now — {inr(price)} <span style={{ fontSize: 12, fontWeight: 500, color: '#CFC4F7' }}>at {lowest.retailer}</span>
+              </a>
               <button type="button" className="btn btn--secondary btn--block" style={{ marginTop: 10 }} aria-pressed={compared} onClick={() => cmp.toggle(p.id)}><CompareIcon size={16} />{compared ? '✓ Added to compare' : 'Add to compare'}</button>
             </div>
           </div>
@@ -158,7 +169,7 @@ export default function ProductView({
               <line x1="544" y1="184" x2="690" y2="180" stroke="var(--violet)" strokeWidth="2.5" strokeDasharray="6 6" />
             </svg>
             <div className="grid g4" style={{ marginTop: 16 }}>
-              {[['Current', inr(price)], ['Lowest ever', inr(price - 2500)], ['Average', inr(price + 2201)]].map(([l, v]) => <div key={l} className="card" style={{ padding: '14px 16px', borderRadius: 14 }}><div className="muted" style={{ fontSize: 12 }}>{l}</div><div style={{ fontSize: 18, fontWeight: 600 }}>{v}</div></div>)}
+              {[['Current', inr(price)], ['Lowest ever', inr(price > 250 ? price - (price * 0.15) : price)], ['Average', inr(price + (price * 0.05))]].map(([l, v]) => <div key={l as string} className="card" style={{ padding: '14px 16px', borderRadius: 14 }}><div className="muted" style={{ fontSize: 12 }}>{l as string}</div><div style={{ fontSize: 18, fontWeight: 600 }}>{v as string}</div></div>)}
               <div className="card" style={{ padding: '14px 16px', borderRadius: 14, background: 'var(--violet-soft)', borderColor: 'var(--violet-border)' }}><div style={{ fontSize: 12, color: 'var(--violet)', fontWeight: 500 }}>Bazariyaa verdict</div><div style={{ fontWeight: 600, fontSize: 14 }}>Good time to buy — forecast flat for 30 days</div></div>
             </div>
           </div>
@@ -168,12 +179,15 @@ export default function ProductView({
           <section className="section--tight">
             <div className="card" style={{ overflow: 'hidden' }}>
               <div style={{ padding: '24px 24px 16px' }}><h2 className="h3">Compare prices across retailers</h2></div>
-              {offers.map((o, i) => (
+              {offers.map((o: any, i) => (
                 <div key={o.retailer} className="offer">
                   <div className="row"><b>{o.retailer}</b>{i === 0 && <span className="badge badge--green">LOWEST</span>}</div>
                   <span className="muted" style={{ fontSize: 13 }}>{o.delivery}</span>
                   <b>{inr(o.price + add)}</b>
-                  <button type="button" className={'btn btn--sm ' + (i === 0 ? 'btn--primary' : 'btn--secondary')}>{i === 0 ? 'Buy now' : 'Visit'}</button>
+                  {/* FIXED: Make store comparison buttons actual links */}
+                  <a href={o.url || '#'} target="_blank" rel="noreferrer" className={'btn btn--sm ' + (i === 0 ? 'btn--primary' : 'btn--secondary')} style={{ textDecoration: 'none' }}>
+                    {i === 0 ? 'Buy now' : 'Visit'}
+                  </a>
                 </div>
               ))}
             </div>
@@ -201,6 +215,7 @@ export default function ProductView({
                   <div className="row" style={{ flexWrap: 'nowrap', marginBottom: 14 }}>
                     <span className="avatar" style={{ background: r.avatar, width: 42, height: 42 }}>{r.initials}</span>
                     <div style={{ flex: 1 }}><div className="row" style={{ gap: 6 }}><b>{r.name}</b><span className={'badge' + (r.badge === 'Verified' ? ' badge--green' : '')}>{r.badge}</span></div><div className="muted" style={{ fontSize: 12.5 }}>{r.meta}</div></div>
+                    {/* FIXED: Syntax error 5r.stars crashed the page */}
                     <span aria-label={r.stars + ' out of 5'}>{'★'.repeat(r.stars)}{'☆'.repeat(5 - r.stars)}</span>
                   </div>
                   <p style={{ margin: '0 0 14px', lineHeight: 1.55, color: 'var(--ink-2)' }}>{r.text}</p>
@@ -255,11 +270,20 @@ export default function ProductView({
       <div className="stickybar" data-show={showBar} aria-hidden={!showBar}>
         <div className="stickybar__in">
           <span style={{ width: 40, height: 40, borderRadius: 10, flex: 'none', background: 'var(--canvas)', overflow: 'hidden', display: 'grid', placeItems: 'center' }}>
-            {p.image ? <img src={p.image} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : p.icon}
+            {hasImages ? (
+              <img src={realImages[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+            ) : (
+              p.icon
+            )}
           </span>
           <div style={{ flex: 1, minWidth: 0 }}><b style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.brand} {p.name}</b><span className="muted" style={{ fontSize: 12 }}>👍 {p.recommended}% Recommended · lowest at {lowest.retailer}</span></div>
-          <div style={{ textAlign: 'right' }}><b style={{ fontSize: 18 }}>{inr(price)}</b><div className="muted" style={{ fontSize: 11 }}>{discountPct(price, mrp)}% off</div></div>
-          <button type="button" className="btn btn--primary" tabIndex={showBar ? 0 : -1}>Buy now</button>
+          <div style={{ textAlign: 'right' }}>
+            <b style={{ fontSize: 18 }}>{inr(price)}</b>
+            {mrp > price && <div className="muted" style={{ fontSize: 11 }}>{discountPct(price, mrp)}% off</div>}
+          </div>
+          <a href={lowest.url || '#'} target="_blank" rel="noreferrer" className="btn btn--primary" tabIndex={showBar ? 0 : -1} style={{ textDecoration: 'none' }}>
+            Buy now
+          </a>
         </div>
       </div>
     </>

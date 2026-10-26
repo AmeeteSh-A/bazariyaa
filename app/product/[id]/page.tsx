@@ -21,7 +21,7 @@ function buildRealSpec(rawJson: any, basePrice: number): PhoneSpec {
   const cameraFallback = attrs['Automatic Backup Software Included'] === 'Webcam' ? 'Webcam' : '-';
 
   return {
-    id: rawJson._id || rawJson.product_id,
+    id: rawJson._id || rawJson.product_id || 'unknown',
     name: rawJson.product_name || rawJson.title || 'Unknown Product',
     brand: rawJson.brand || 'Brand',
     buy: 85,
@@ -49,7 +49,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
     .select('data')
     .eq('id', id)
     .single();
-       
+        
   if (!raw) notFound();
 
   const { data: hist } = await supabase
@@ -61,26 +61,36 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
 
   const dbProduct = normalizeProduct(raw.data, hist?.data ?? null);
   const uiProduct = toUiProduct(dbProduct);
-  const actualPrice = parseMongoNum(raw.data.price);
+  
+  const actualPrice = parseMongoNum(raw.data.price || raw.data.sale_price || raw.data.selling_price || raw.data.current_price);
 
   const primaryRetailer = raw.data.site_name === 'amazon.ae' ? 'Amazon AE'
+                         : raw.data.site_name === 'sharafdg' ? 'Sharaf DG'
                          : raw.data.site_name === 'alasil.ae' ? 'Alasil'
                          : 'Store';
-                           
+                         
   const offers = [
-    { retailer: primaryRetailer, price: actualPrice, delivery: 'Free delivery by tomorrow', inStock: raw.data.in_stock !== false },
-    { retailer: 'Noon', price: Math.round(actualPrice * 1.02), delivery: 'Delivery in 2 days', inStock: true },
-    { retailer: 'Carrefour', price: Math.round(actualPrice * 1.05), delivery: 'Delivery in 3-4 days', inStock: true },
+    { 
+      retailer: primaryRetailer, 
+      price: actualPrice, 
+      delivery: 'Free delivery by tomorrow', 
+      inStock: raw.data.in_stock !== false,
+      url: raw.data.url || raw.data.product_url || '#' // Generates the real outbound link
+    },
+    { retailer: 'Noon', price: Math.round(actualPrice * 1.02), delivery: 'Delivery in 2 days', inStock: true, url: '#' },
+    { retailer: 'Carrefour', price: Math.round(actualPrice * 1.05), delivery: 'Delivery in 3-4 days', inStock: true, url: '#' },
   ];
 
   const { data: altRaw } = await supabase
     .from('raw_products')
     .select('data')
+    .neq('id', id)
+    .ilike('data->>brand', `%${raw.data.brand || ''}%`)
     .limit(4);
-       
+        
   const alternatives = (altRaw || []).map(r => toUiProduct(normalizeProduct(r.data, null)));
   const baseSpec = buildRealSpec(raw.data, actualPrice);
-  const availableSpecs = (altRaw || []).map(r => buildRealSpec(r.data, parseMongoNum(r.data.price)));
+  const availableSpecs = (altRaw || []).map(r => buildRealSpec(r.data, parseMongoNum(r.data.price || r.data.sale_price || r.data.selling_price)));
 
   return (
     <ProductView
