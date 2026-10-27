@@ -26,9 +26,13 @@ export default function ProductView({
   faqs = [],
   videos = [],
   currentColor = '',
+  currentRam = '',
   currentStorage = '',
+  currentSize = '',
   colorVariants = [],
-  storageVariants = []
+  ramVariants = [],
+  storageVariants = [],
+  sizeVariants = []
 }: { 
   product: Product & { images?: string[] }; 
   baseSpec?: ProductSpec;
@@ -42,9 +46,13 @@ export default function ProductView({
   faqs?: Faq[];
   videos?: any[];
   currentColor?: string;
+  currentRam?: string;
   currentStorage?: string;
+  currentSize?: string;
   colorVariants?: { label: string; id: string }[];
+  ramVariants?: { label: string; id: string }[];
   storageVariants?: { label: string; id: string }[];
+  sizeVariants?: { label: string; id: string }[];
 }) {
   const inr = (n: number) => money(n, p.currency);
   const cmp = useCompare();
@@ -71,6 +79,8 @@ export default function ProductView({
   const minPrice = validHistory.length > 0 ? Math.min(...validHistory, price) : price;
   const avgPrice = validHistory.length > 0 ? Math.round(validHistory.reduce((a, b) => a + b, 0) / validHistory.length) : price;
   const priceVerdict = price <= minPrice ? 'Lowest ever — Great time to buy' : price > avgPrice ? 'Price is high — Consider waiting' : 'Average price — Good to buy';
+
+  const hasVariants = !!(currentColor || colorVariants.length > 0 || currentRam || ramVariants.length > 0 || currentStorage || storageVariants.length > 0 || currentSize || sizeVariants.length > 0);
 
   return (
     <>
@@ -111,8 +121,7 @@ export default function ProductView({
             <h1 style={{ fontSize: 30, fontWeight: 600, letterSpacing: '-0.035em', margin: '4px 0 0' }}>{p.name}</h1>
             <div className="row" style={{ marginTop: 14 }}><strong>★ {p.rating}</strong><span className="muted" style={{ fontSize: 13 }}>{p.reviews} reviews</span><span className="badge">👍 {p.recommended}% Recommended</span></div>
 
-            {/* DYNAMIC ROUTING VARIANTS */}
-            {(currentColor || colorVariants.length > 0 || currentStorage || storageVariants.length > 0) && (
+            {hasVariants && (
               <div className="variants">
                 {(currentColor || colorVariants.length > 0) && (
                   <>
@@ -129,18 +138,55 @@ export default function ProductView({
                     </div>
                   </>
                 )}
+                
+                {(currentRam || ramVariants.length > 0) && (
+                  <>
+                    <div className="variant-label">RAM</div>
+                    <div className="row" style={{ flexWrap: 'nowrap', overflowX: 'auto' }}>
+                      {currentRam && (
+                        <span className="storage" aria-pressed="true">
+                          <b style={{ display: 'block', fontSize: 13.5, textTransform: 'uppercase' }}>{currentRam}</b>
+                        </span>
+                      )}
+                      {ramVariants.map(rv => (
+                        <Link key={rv.id} href={`/product/${encodeURIComponent(rv.id)}`} className="storage" style={{ textDecoration: 'none' }}>
+                          <b style={{ display: 'block', fontSize: 13.5, textTransform: 'uppercase' }}>{rv.label}</b>
+                        </Link>
+                      ))}
+                    </div>
+                  </>
+                )}
+
                 {(currentStorage || storageVariants.length > 0) && (
                   <>
-                    <div className="variant-label">Spec / Size</div>
+                    <div className="variant-label">Storage</div>
                     <div className="row" style={{ flexWrap: 'nowrap', overflowX: 'auto' }}>
                       {currentStorage && (
-                        <span className="storage" aria-pressed="true" style={{ textTransform: 'uppercase' }}>
-                          <b style={{ display: 'block', fontSize: 13.5 }}>{currentStorage}</b>
+                        <span className="storage" aria-pressed="true">
+                          <b style={{ display: 'block', fontSize: 13.5, textTransform: 'uppercase' }}>{currentStorage}</b>
                         </span>
                       )}
                       {storageVariants.map(sv => (
                         <Link key={sv.id} href={`/product/${encodeURIComponent(sv.id)}`} className="storage" style={{ textDecoration: 'none' }}>
                           <b style={{ display: 'block', fontSize: 13.5, textTransform: 'uppercase' }}>{sv.label}</b>
+                        </Link>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {(currentSize || sizeVariants.length > 0) && (
+                  <>
+                    <div className="variant-label">Size / Volume</div>
+                    <div className="row" style={{ flexWrap: 'nowrap', overflowX: 'auto' }}>
+                      {currentSize && (
+                        <span className="storage" aria-pressed="true">
+                          <b style={{ display: 'block', fontSize: 13.5, textTransform: 'lowercase' }}>{currentSize}</b>
+                        </span>
+                      )}
+                      {sizeVariants.map(sz => (
+                        <Link key={sz.id} href={`/product/${encodeURIComponent(sz.id)}`} className="storage" style={{ textDecoration: 'none' }}>
+                          <b style={{ display: 'block', fontSize: 13.5, textTransform: 'lowercase' }}>{sz.label}</b>
                         </Link>
                       ))}
                     </div>
