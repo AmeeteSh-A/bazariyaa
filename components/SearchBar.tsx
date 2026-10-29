@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { SearchIcon } from "./Icons";
 
 type SearchResultItem = {
@@ -24,9 +24,9 @@ type SearchApiResponse = {
 };
 
 export default function SearchBar({
-  placeholder = "Search laptops, phones, milk, namkeen...",
+  placeholder,
   initialValue = "",
-  variant = "global"
+  variant
 }: {
   placeholder?: string;
   initialValue?: string;
@@ -36,8 +36,13 @@ export default function SearchBar({
   const [results, setResults] = useState<SearchApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  
   const containerRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
+  const pathname = usePathname();
+
+  const isGrocery = pathname?.startsWith('/grocery') || variant === 'grocery';
+  const activePlaceholder = placeholder || (isGrocery ? "Search daily essentials, snacks, milk..." : "Search laptops, phones, perfumes...");
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -63,7 +68,7 @@ export default function SearchBar({
       setLoading(true);
       setOpen(true);
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`, {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}&type=${isGrocery ? 'grocery' : 'general'}`, {
           signal: controller.signal
         });
         if (res.ok) {
@@ -81,14 +86,14 @@ export default function SearchBar({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query]);
+  }, [query, isGrocery]);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!query.trim()) return;
     setOpen(false);
     
-    const basePath = variant === "grocery" ? "/grocery/search" : "/search";
+    const basePath = isGrocery ? "/grocery" : "/search";
     router.push(`${basePath}?q=${encodeURIComponent(query.trim())}`);
   }
 
@@ -98,8 +103,7 @@ export default function SearchBar({
     (results?.associated?.length || 0);
 
   return (
-    // Added zIndex: 9999 to guarantee it sits above absolutely everything
-    <div ref={containerRef} className={`search ${variant === 'grocery' ? 'search--sm' : ''}`} style={{ width: '100%', position: 'relative', zIndex: 9999 }}>
+    <div ref={containerRef} className={`search ${isGrocery ? 'search--sm' : ''}`} style={{ width: '100%', position: 'relative', zIndex: 9999 }}>
       <form onSubmit={handleSubmit} className="search__bar">
         <SearchIcon size={20} className="faint" />
         <input
@@ -109,7 +113,7 @@ export default function SearchBar({
           onFocus={() => {
             if (query.trim().length > 0) setOpen(true);
           }}
-          placeholder={placeholder}
+          placeholder={activePlaceholder}
         />
         <button type="submit" className="btn btn--primary">Search</button>
       </form>
@@ -129,7 +133,6 @@ export default function SearchBar({
           {results && results.exact.length > 0 && (
             <div style={{ marginBottom: 12 }}>
               <div className="search__label">Exact Matches</div>
-              {/* Slicing to show exactly top 5 */}
               {results.exact.slice(0, 5).map((item) => (
                 <Link
                   key={item.id}
@@ -138,7 +141,6 @@ export default function SearchBar({
                   className="search__item"
                   style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '10px 12px' }}
                 >
-                  {/* Picture of the result */}
                   <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--canvas)', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }}>
                     {item.image ? (
                       <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
@@ -147,7 +149,6 @@ export default function SearchBar({
                     )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    {/* Black text forced for the title */}
                     <span className="search__title" style={{ color: '#000', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
                     <span className="search__meta" style={{ display: 'block' }}>{item.category} • {item.price}</span>
                   </div>

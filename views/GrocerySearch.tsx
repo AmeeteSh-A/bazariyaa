@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { GroceryCard } from '@/components/GroceryCard';
 import { Modal } from '@/components/Modal';
-import SearchBar from '@/components/SearchBar';
 import { CheckIcon, ChevronRight, ClipIcon, ImageIcon, ListIcon, MicIcon, PinIcon, UploadIcon } from '@/components/Icons';
 import type { GroceryCategory } from '@/types';
 import { inr, unitPrice } from '@/utils/format';
@@ -43,14 +42,16 @@ export default function GrocerySearch({
   initialProducts = []
 }: {
   categories: GroceryCategory[];
-  initialProducts?: any[]; // Accepts the grouped data structure
+  initialProducts?: any[]; 
 }) {
-  const { category } = useParams<{ category?: string }>();
+  const pathParams = useParams<{ category?: string }>();
   const params = useSearchParams();
   const router = useRouter();
-  const nav = (to: string) => router.push(to);
   
-  const activeCat = categories.find(c => c.cat === category) ?? categories[0];
+  const activeCatId = params.get('category') || pathParams.category;
+  const activeCat = categories.find(c => c.cat === activeCatId) ?? categories[0];
+  
+  const [searchQuery, setSearchQuery] = useState(params.get('q') || '');
   const [sub, setSub] = useState('All');
   const [sort, setSort] = useState<Sort>('price');
   const [modal, setModal] = useState<'type' | 'image' | null>(params.get('list') ? 'type' : null);
@@ -71,6 +72,21 @@ export default function GrocerySearch({
     subsRef.current?.scrollTo({ left: 0 }); 
   }, [activeCat?.cat]);
 
+const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    const p = new URLSearchParams(params.toString());
+    if (searchQuery.trim()) p.set('q', searchQuery.trim());
+    else p.delete('q');
+    router.push(`/grocery?${p.toString()}`);
+  };
+
+  const setCategory = (catId: string) => {
+    const p = new URLSearchParams(params.toString());
+    if (catId && catId !== 'all') p.set('category', catId);
+    else p.delete('category');
+    router.push(`/grocery?${p.toString()}`);
+  };
+
   const products = useMemo(() => {
     let l = initialProducts;
     
@@ -87,7 +103,6 @@ export default function GrocerySearch({
     } else {
       l = l.filter(p => {
         if (!activeCat) return true;
-
         const pCat = (p.category || '').toLowerCase().trim();
         const aCat = (activeCat.cat || '').toLowerCase().trim();   
         
@@ -99,12 +114,10 @@ export default function GrocerySearch({
         }
           
         const matchesSub = sub === 'All' ? true : p.brand === sub;
-        
         return matchesCat && matchesSub;
       });
     }
 
-    // Apply Sorting using the nested group structure
     l = [...l].sort((a, b) => {
       const aBase = a.sizes?.[0]?.stores?.[0] || { price: 0, mrp: 0 };
       const bBase = b.sizes?.[0]?.stores?.[0] || { price: 0, mrp: 0 };
@@ -115,20 +128,18 @@ export default function GrocerySearch({
       const bMrp = bBase.mrp;
       
       switch (sort) {
-        case 'price': 
-          return aPrice - bPrice; 
+        case 'price': return aPrice - bPrice; 
         case 'discount': {
           const aPct = aMrp > aPrice ? (aMrp - aPrice) / aMrp : 0;
           const bPct = bMrp > bPrice ? (bMrp - bPrice) / bMrp : 0;
-          return bPct - aPct; // Highest discount first
+          return bPct - aPct;
         }
         case 'unit': {
           const aUnit = unitPrice(aPrice, a.sizes?.[0]?.size_value || 1, a.sizes?.[0]?.size_unit || 'pc').value;
           const bUnit = unitPrice(bPrice, b.sizes?.[0]?.size_value || 1, b.sizes?.[0]?.size_unit || 'pc').value;
           return aUnit - bUnit;
         }
-        default: 
-          return aPrice - bPrice;
+        default: return aPrice - bPrice;
       }
     });
     
@@ -149,8 +160,6 @@ export default function GrocerySearch({
     setModal(null); 
     setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: 'smooth' }), 50); 
   };
-  
-  const setCategory = (id: string) => nav('/grocery/' + id);
 
   return (
     <div className="container container--wide">
@@ -160,9 +169,23 @@ export default function GrocerySearch({
           <div className="eyebrow" style={{ marginTop: 32 }}>Grocery price comparison</div>
           <h1 className="h1" style={{ fontSize: 'clamp(30px, 4vw, 40px)', marginTop: 10 }}>Find the best grocery prices without checking every store.</h1>
           <p className="lead" style={{ marginTop: 14, fontSize: 17 }}>Search an item, or drop your entire list — we compare it across Blinkit, Zepto, Instamart and more.</p>
+          
           <div style={{ marginTop: 28, maxWidth: 760 }}>
-            <SearchBar placeholder="Search groceries, brands or products…" variant="grocery" />
-            </div>
+            <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, width: '100%' }}>
+              <input
+                type="search"
+                placeholder="Search groceries, brands or products…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="input"
+                style={{ flex: 1, padding: '12px 20px', borderRadius: 12, border: '1px solid var(--divider)', fontSize: 16 }}
+              />
+              <button type="submit" className="btn btn--primary" style={{ borderRadius: 12, padding: '0 24px' }}>
+                Search
+              </button>
+            </form>
+          </div>
+          
           <div className="row" style={{ marginTop: 16, fontSize: 13.5 }}>
             <span className="muted" style={{ fontWeight: 500 }}>Have a grocery list?</span>
             <button type="button" className="chip" onClick={() => setModal('type')}><ListIcon size={15} color="var(--violet)" />Type list</button>
