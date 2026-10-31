@@ -6,8 +6,7 @@ import SearchBar from '@/components/SearchBar';
 import { ProductCard } from '@/components/ProductCard';
 import { FaqList } from '@/components/FaqList';
 import { CheckIcon, ChevronRight, ThumbIcon } from '@/components/Icons';
-import { LANDING_CATEGORIES, LANDING_FAQS, TESTIMONIALS } from '@/data/products';
-import type { Category, Product } from '@/types';
+import type { Category, Product, Review, Faq } from '@/types';
 import { money, sparkPoints } from '@/utils/format';
 
 const FILTERS: Array<'All' | Category> = ['All', 'Mobiles', 'Audio', 'Laptops', 'Home', 'Wearables', 'Cameras'];
@@ -38,7 +37,24 @@ function Stat({ target, decimals = 0, prefix = '', suffix = '', label }: { targe
   );
 }
 
-export default function Landing({ liveProducts = [] }: { liveProducts?: Product[] }) {
+export interface CategoryInfo {
+  name: string;
+  icon: string;
+  count: string;
+  key: string;
+}
+
+export default function Landing({ 
+  liveProducts = [],
+  categories = [],
+  testimonials = [],
+  faqs = []
+}: { 
+  liveProducts?: Product[];
+  categories?: CategoryInfo[];
+  testimonials?: Review[];
+  faqs?: Faq[];
+}) {
   const PRODUCTS = liveProducts;
   const [filter, setFilter] = useState<'All' | Category>('All');
   const [tick, setTick] = useState(0);
@@ -69,7 +85,7 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
   }, [dynamicTickers]);
   
   const list = useMemo(() => (filter === 'All' ? PRODUCTS : PRODUCTS.filter(p => p.category === filter)), [filter, PRODUCTS]);
-  const t = TESTIMONIALS[tIdx];
+  const t = testimonials[tIdx] || null;
 
   const dealsData = PRODUCTS.filter(p => p.trend === 'down' || p.trendPct > 0).slice(0, 3).map((p) => {
     const isSteepDrop = p.trendPct > 5;
@@ -142,20 +158,22 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
         </section>
       </div>
 
-      <section className="section" id="categories">
-        <div className="container">
-          <div className="sec-head"><h2 className="h3">Popular categories <ChevronRight size={16} style={{ verticalAlign: -2 }} /></h2></div>
-          <div className="grid g4">
-            {LANDING_CATEGORIES.map(c => (
-              <Link key={c.name} href={c.key === 'grocery' ? '/grocery' : '/#trending'} onClick={() => c.key !== 'grocery' && setFilter(c.key === 'All' ? 'All' : (c.key as Category))} className="cat-card card--hover">
-                <div className="cat-card__ic">{c.icon}</div>
-                <div style={{ fontWeight: 600 }}>{c.name}</div>
-                <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>{c.count} products</div>
-              </Link>
-            ))}
+      {categories.length > 0 && (
+        <section className="section" id="categories">
+          <div className="container">
+            <div className="sec-head"><h2 className="h3">Popular categories <ChevronRight size={16} style={{ verticalAlign: -2 }} /></h2></div>
+            <div className="grid g4">
+              {categories.map(c => (
+                <Link key={c.name} href={c.key === 'grocery' ? '/grocery' : '/#trending'} onClick={() => c.key !== 'grocery' && setFilter(c.key === 'All' ? 'All' : (c.key as Category))} className="cat-card card--hover">
+                  <div className="cat-card__ic">{c.icon}</div>
+                  <div style={{ fontWeight: 600 }}>{c.name}</div>
+                  <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>{c.count} products</div>
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="section" id="trending">
         <div className="container">
@@ -231,33 +249,37 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
         </section>
       )}
 
-      <section className="section" id="community">
-        <div className="container">
-          <div className="sec-head">
-            <div><div className="eyebrow">Trusted by shoppers</div><h2 className="h2">A community that buys with confidence</h2></div>
-            <div className="row" style={{ gap: 32 }}>{[['4.8 / 5', 'Average rating'], ['2.1M', 'Verified reviews'], ['98%', 'Would buy again']].map(([v, l]) => <div key={l}><div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.035em' }}>{v}</div><div className="muted" style={{ fontSize: 12.5 }}>{l}</div></div>)}</div>
-          </div>
-          <div className="card spotlight" aria-live="polite">
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span className="badge" style={{ alignSelf: 'flex-start' }}><CheckIcon size={13} /> Verified Buyer · {t.platform}</span>
-              <p className="spotlight__quote">“{t.text}”</p>
-              <div className="row" style={{ marginTop: 'auto', flexWrap: 'nowrap' }}>
-                <span className="avatar" style={{ background: t.avatar }}>{t.initials}</span>
-                <div style={{ flex: 1 }}><div style={{ fontWeight: 600 }}>{t.name}</div><div className="muted" style={{ fontSize: 13 }}>{t.meta} · {t.date}</div></div>
-                <div className="row">
-                  <button type="button" className="icon-btn" aria-label="Previous review" onClick={() => setTIdx(i => (i - 1 + TESTIMONIALS.length) % TESTIMONIALS.length)}>‹</button>
-                  <button type="button" className="icon-btn" aria-label="Next review" onClick={() => setTIdx(i => (i + 1) % TESTIMONIALS.length)}>›</button>
+      {t && (
+        <section className="section" id="community">
+          <div className="container">
+            <div className="sec-head">
+              <div><div className="eyebrow">Trusted by shoppers</div><h2 className="h2">A community that buys with confidence</h2></div>
+              <div className="row" style={{ gap: 32 }}>{[['4.8 / 5', 'Average rating'], ['2.1M', 'Verified reviews'], ['98%', 'Would buy again']].map(([v, l]) => <div key={l}><div style={{ fontSize: 26, fontWeight: 600, letterSpacing: '-0.035em' }}>{v}</div><div className="muted" style={{ fontSize: 12.5 }}>{l}</div></div>)}</div>
+            </div>
+            <div className="card spotlight" aria-live="polite">
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span className="badge" style={{ alignSelf: 'flex-start' }}><CheckIcon size={13} /> Verified Buyer · {t.platform}</span>
+                <p className="spotlight__quote">“{t.text}”</p>
+                <div className="row" style={{ marginTop: 'auto', flexWrap: 'nowrap' }}>
+                  <span className="avatar" style={{ background: t.avatar }}>{t.initials}</span>
+                  <div style={{ flex: 1 }}><div style={{ fontWeight: 600 }}>{t.name}</div><div className="muted" style={{ fontSize: 13 }}>{t.meta} · {t.date}</div></div>
+                  {testimonials.length > 1 && (
+                    <div className="row">
+                      <button type="button" className="icon-btn" aria-label="Previous review" onClick={() => setTIdx(i => (i - 1 + testimonials.length) % testimonials.length)}>‹</button>
+                      <button type="button" className="icon-btn" aria-label="Next review" onClick={() => setTIdx(i => (i + 1) % testimonials.length)}>›</button>
+                    </div>
+                  )}
                 </div>
+                <div className="row muted" style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--divider)', fontSize: 13 }}><ThumbIcon size={15} /><b style={{ color: '#000' }}>{t.helpful}</b> found this helpful<span style={{ marginLeft: 'auto' }}>{tIdx + 1} / {testimonials.length}</span></div>
               </div>
-              <div className="row muted" style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--divider)', fontSize: 13 }}><ThumbIcon size={15} /><b style={{ color: '#000' }}>{t.helpful}</b> found this helpful<span style={{ marginLeft: 'auto' }}>{tIdx + 1} / {TESTIMONIALS.length}</span></div>
-            </div>
-            <div className="card" style={{ padding: 8 }}>
-              <div className="placeholder" style={{ aspectRatio: '4/3', borderRadius: 16 }}>{t.product?.toUpperCase()} — PHOTO</div>
-              <div style={{ padding: '14px 10px 6px' }}><div className="muted" style={{ fontSize: 12 }}>Purchased & reviewed</div><div style={{ fontWeight: 600, marginTop: 4 }}>{t.product}</div><div className="faint" style={{ fontSize: 12, marginTop: 4 }}>bought via {t.platform}</div></div>
+              <div className="card" style={{ padding: 8 }}>
+                <div className="placeholder" style={{ aspectRatio: '4/3', borderRadius: 16 }}>{t.product?.toUpperCase()} — PHOTO</div>
+                <div style={{ padding: '14px 10px 6px' }}><div className="muted" style={{ fontSize: 12 }}>Purchased & reviewed</div><div style={{ fontWeight: 600, marginTop: 4 }}>{t.product}</div><div className="faint" style={{ fontSize: 12, marginTop: 4 }}>bought via {t.platform}</div></div>
+              </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       <section className="section--tight"><div className="container"><div className="stats">
         <Stat target={2.4} decimals={1} suffix="M" label="Products tracked" />
@@ -266,10 +288,12 @@ export default function Landing({ liveProducts = [] }: { liveProducts?: Product[
         <Stat target={420} prefix="AED " label="Avg. saved per buyer" />
       </div></div></section>
 
-      <section className="section"><div className="container" style={{ maxWidth: 900 }}>
-        <div style={{ textAlign: 'center', marginBottom: 40 }}><div className="eyebrow">Good to know</div><h2 className="h2">Questions, answered</h2></div>
-        <FaqList items={LANDING_FAQS} />
-      </div></section>
+      {faqs.length > 0 && (
+        <section className="section"><div className="container" style={{ maxWidth: 900 }}>
+          <div style={{ textAlign: 'center', marginBottom: 40 }}><div className="eyebrow">Good to know</div><h2 className="h2">Questions, answered</h2></div>
+          <FaqList items={faqs} />
+        </div></section>
+      )}
 
       <section className="section--tight"><div className="container">
         <div className="newsletter">

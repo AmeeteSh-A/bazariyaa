@@ -3,7 +3,7 @@ import ProductView from '@/views/Product';
 import { normalizeProduct } from '@/lib/adapter';
 import { toUiProduct } from '@/lib/toUiProduct';
 import { serverSupabase } from '@/lib/supabaseServer';
-import type { ProductSpec } from '@/types';
+import type { ProductSpec, RetailerOffer } from '@/types';
 
 const parseMongoNum = (val: any): number => {
   if (!val) return 0;
@@ -17,6 +17,7 @@ function buildRealSpec(rawJson: any, basePrice: number, buyScore: number, trustS
   const rawFeatures = rawJson.attributes || rawJson.product_specification || rawJson.specifications || {};
   const features: Record<string, string> = {};
   let count = 0;
+  
   for (const [key, value] of Object.entries(rawFeatures)) {
     if (count >= 10) break;
     if (typeof value === 'string' && value.trim().length > 0 && value.length < 60 && key !== 'Customer Reviews' && key !== 'Best Sellers Rank') {
@@ -38,11 +39,10 @@ function buildRealSpec(rawJson: any, basePrice: number, buyScore: number, trustS
   };
 }
 
-function extractVariants(data: any) {
+function extractLegacyVariants(data: any) {
   const attrs = data.attributes || data.product_specification || data.specifications || {};
   const findKey = (keywords: string[]) => Object.keys(attrs).find(k => keywords.some(kw => k.toLowerCase().includes(kw)));
   const title = (data.product_name || data.title || '').toLowerCase();
-  
   const cleanTitle = title.replace(/\s+/g, '');
   const capacityGB = (val: string) => {
     const num = parseFloat(val);
@@ -78,7 +78,6 @@ function extractVariants(data: any) {
      const mems = title.match(/\b(\d+)\s*(gb|tb)\b/gi);
      if (mems) {
          const uniqueMems: string[] = Array.from(new Set(mems.map((m: string) => m.replace(/\s+/g, '').toUpperCase())));
-         
          if (uniqueMems.length >= 2) {
              const sorted = uniqueMems.sort((a: string, b: string) => capacityGB(a) - capacityGB(b));
              if (!ram) ram = sorted[0];
@@ -106,6 +105,55 @@ function extractVariants(data: any) {
   return { color, ram, storage, size };
 }
 
+function extractCoupons(data: any) {
+  if (Array.isArray(data.coupons)) {
+    return data.coupons.map((c: any) => ({
+      code: c.code || '',
+      discount: c.discount || 'Offer',
+      terms: c.terms || ''
+    }));
+  }
+  if (Array.isArray(data.coupon_codes)) {
+    return data.coupon_codes.map((c: any) => ({
+      code: String(c),
+      discount: 'Offer',
+      terms: 'Apply at checkout'
+    }));
+  }
+  return [];
+}
+
+function extractHighlights(data: any) {
+  if (Array.isArray(data.highlights)) {
+    return data.highlights.map(String);
+  }
+  if (data.highlights && typeof data.highlights === 'object') {
+    const pills = Array.isArray(data.highlights.pills) ? data.highlights.pills : [];
+    const features = Array.isArray(data.highlights.features) 
+      ? data.highlights.features.map((x: any) => `${x.title}: ${x.detail}`) 
+      : [];
+    return [...pills, ...features];
+  }
+  return [];
+}
+
+function extractGroupedSpecs(data: any) {
+  if (data.specification_categories && typeof data.specification_categories === 'object') {
+    return Object.entries(data.specification_categories).map(([category, items]) => ({
+      category,
+      items: Object.entries(items as object).map(([k, v]) => [k, String(v)] as [string, string])
+    }));
+  }
+  const flat = data.specifications || data.attributes;
+  if (flat && typeof flat === 'object') {
+    return [{
+      category: 'General Specifications',
+      items: Object.entries(flat).map(([k, v]) => [k, String(v)] as [string, string]).slice(0, 15)
+    }];
+  }
+  return [];
+}
+
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const cleanId = decodeURIComponent(id);
@@ -122,52 +170,70 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   const uiProduct = toUiProduct(dbProduct);
   
   const actualPrice = parseMongoNum(raw.data.price || raw.data.sale_price || raw.data.selling_price || raw.data.current_price);
-  const primaryRetailer = raw.data.site_name === 'amazon.ae' ? 'Amazon AE' : raw.data.site_name === 'sharafdg' ? 'Sharaf DG' : raw.data.site_name || 'Store';
-                         
-  let offers = [{ 
+  const primaryRetailer = raw.data.seller_name || raw.data.seller || (raw.data.site_name === 'amazon.ae' ? 'Amazon AE' : raw.data.site_name === 'sharafdg' ? 'Sharaf DG' : raw.data.site_name || 'Store');
+                          
+  let offers: RetailerOffer[] = [{ 
     retailer: primaryRetailer, 
     price: actualPrice, 
-    delivery: 'View on store', 
+    delivery: raw.data.fulfillment_type || 'View on store', 
     inStock: raw.data.in_stock !== false,
     url: raw.data.url || raw.data.product_url || raw.data.link || '#'
-  }];
+  } as RetailerOffer & { url: string }];
 
-  const currVar = extractVariants(raw.data);
+  if (Array.isArray(raw.data.sellers)) {
+    raw.data.sellers.forEach((s: any) => {
+      if (s.seller_name && s.seller_name !== primaryRetailer) {
+        offers.push({
+          retailer: s.seller_name,
+          price: parseMongoNum(s.price),
+          delivery: s.fulfillment_type || 'Check store',
+          inStock: true,
+          url: raw.data.url || '#'
+        } as RetailerOffer & { url: string });
+      }
+    });
+  }
+
+  const currVar = extractLegacyVariants(raw.data);
   const colorMap = new Map<string, {label: string, id: string}>();
   const ramMap = new Map<string, {label: string, id: string}>();
   const storageMap = new Map<string, {label: string, id: string}>();
   const sizeMap = new Map<string, {label: string, id: string}>();
 
-  const nameBase = (raw.data.product_name || raw.data.title || '').replace(/[^a-zA-Z0-9\s]/g, '');
+  const nameBase = (raw.data.product_title || raw.data.product_name || raw.data.title || '').replace(/[^a-zA-Z0-9\s]/g, '');
   const searchMatch = nameBase.split(' ').slice(0, 3).join('%');
+  const sku = raw.data.sku || '';
 
-  if (searchMatch.length > 3) {
-    const { data: compRaw } = await supabase
-      .from('raw_products')
-      .select('id, data')
-      .neq('id', cleanId)
-      .ilike('data->>brand', `%${raw.data.brand || ''}%`)
-      .ilike('data->>product_name', `%${searchMatch}%`)
-      .limit(50);
+  if (searchMatch.length > 3 || sku.length > 3) {
+    const query = supabase.from('raw_products').select('id, data').neq('id', cleanId).limit(50);
+    
+    if (sku) {
+      query.or(`data->>sku.eq.${sku},data->>product_name.ilike.%${searchMatch}%,data->>title.ilike.%${searchMatch}%`);
+    } else {
+      query.or(`data->>product_name.ilike.%${searchMatch}%,data->>title.ilike.%${searchMatch}%`);
+    }
+
+    const { data: compRaw } = await query;
 
     if (compRaw) {
       compRaw.forEach(c => {
-        const v = extractVariants(c.data);
         const cPrice = parseMongoNum(c.data.price || c.data.sale_price || c.data.selling_price || c.data.current_price);
-        const cRet = c.data.site_name === 'amazon.ae' ? 'Amazon AE' : c.data.site_name === 'sharafdg' ? 'Sharaf DG' : c.data.site_name || 'Store';
+        const cRet = c.data.seller_name || c.data.seller || (c.data.site_name === 'amazon.ae' ? 'Amazon AE' : c.data.site_name === 'sharafdg' ? 'Sharaf DG' : c.data.site_name || 'Store');
         
+        const isSkuMatch = sku && c.data.sku === sku;
+        const isNameMatch = c.data.product_name === raw.data.product_name || c.data.title === raw.data.title;
+        
+        const v = extractLegacyVariants(c.data);
         const matchC = currVar.color === v.color || (!currVar.color && !v.color);
         const matchR = currVar.ram === v.ram || (!currVar.ram && !v.ram);
         const matchS = currVar.storage === v.storage || (!currVar.storage && !v.storage);
         const matchZ = currVar.size === v.size || (!currVar.size && !v.size);
         
-        if (matchC && matchR && matchS && matchZ) {
-          if (cPrice > 0) {
-            offers.push({
-              retailer: cRet, price: cPrice, delivery: 'View on store',
-              inStock: c.data.in_stock !== false, url: c.data.url || c.data.product_url || c.data.link || '#'
-            });
-          }
+        if (cPrice > 0 && (isSkuMatch || isNameMatch || (matchC && matchR && matchS && matchZ))) {
+          offers.push({
+            retailer: cRet, price: cPrice, delivery: c.data.fulfillment_type || 'View on store',
+            inStock: c.data.in_stock !== false, url: c.data.url || c.data.product_url || c.data.link || '#'
+          } as RetailerOffer & { url: string });
         } else {
           if (v.color && v.color !== currVar.color && !colorMap.has(v.color)) colorMap.set(v.color, { label: v.color, id: c.id });
           if (v.ram && v.ram !== currVar.ram && !ramMap.has(v.ram)) ramMap.set(v.ram, { label: v.ram, id: c.id });
@@ -179,7 +245,7 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
   }
 
   const uniqueOffersMap = new Map();
-  offers.forEach(o => {
+  offers.forEach((o: any) => {
     if (!uniqueOffersMap.has(o.retailer) || uniqueOffersMap.get(o.retailer).price > o.price) {
       uniqueOffersMap.set(o.retailer, o);
     }
@@ -195,22 +261,76 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
     return buildRealSpec(r.data, norm.numericPrice, norm.buy, parseInt(norm.real) || 90);
   });
 
+  let finalVariantGroups: any[] = [];
+  
+  if (raw.data.variants && Array.isArray(raw.data.variants) && raw.data.variants.some((v: any) => v.group && v.value)) {
+    const groups = new Map<string, any[]>();
+    raw.data.variants.forEach((v: any) => {
+      if (!v.group || !v.value) return;
+      if (!groups.has(v.group)) groups.set(v.group, []);
+      groups.get(v.group)!.push({
+        id: v.variant_id || v.url || v.value,
+        label: String(v.value),
+        isActive: v.is_active === true,
+        image: v.image || null
+      });
+    });
+    finalVariantGroups = Array.from(groups.entries()).map(([group, options]) => ({ group, options }));
+  } else {
+    if (currVar.color || colorMap.size > 0) {
+      finalVariantGroups.push({
+        group: 'Colour',
+        options: [
+          ...(currVar.color ? [{ id: cleanId, label: currVar.color, isActive: true }] : []),
+          ...Array.from(colorMap.values()).map(v => ({ id: v.id, label: v.label, isActive: false }))
+        ]
+      });
+    }
+    if (currVar.ram || ramMap.size > 0) {
+      finalVariantGroups.push({
+        group: 'RAM',
+        options: [
+          ...(currVar.ram ? [{ id: cleanId, label: currVar.ram, isActive: true }] : []),
+          ...Array.from(ramMap.values()).map(v => ({ id: v.id, label: v.label, isActive: false }))
+        ]
+      });
+    }
+    if (currVar.storage || storageMap.size > 0) {
+      finalVariantGroups.push({
+        group: 'Storage',
+        options: [
+          ...(currVar.storage ? [{ id: cleanId, label: currVar.storage, isActive: true }] : []),
+          ...Array.from(storageMap.values()).map(v => ({ id: v.id, label: v.label, isActive: false }))
+        ]
+      });
+    }
+    if (currVar.size || sizeMap.size > 0) {
+      finalVariantGroups.push({
+        group: 'Size / Volume',
+        options: [
+          ...(currVar.size ? [{ id: cleanId, label: currVar.size, isActive: true }] : []),
+          ...Array.from(sizeMap.values()).map(v => ({ id: v.id, label: v.label, isActive: false }))
+        ]
+      });
+    }
+  }
+
+  const coupons = extractCoupons(raw.data);
+  const highlights = extractHighlights(raw.data);
+  const groupedSpecs = extractGroupedSpecs(raw.data);
+
   return (
     <ProductView
       product={uiProduct}
-      currentColor={currVar.color}
-      currentRam={currVar.ram}
-      currentStorage={currVar.storage}
-      currentSize={currVar.size}
-      colorVariants={Array.from(colorMap.values())}
-      ramVariants={Array.from(ramMap.values())}
-      storageVariants={Array.from(storageMap.values())}
-      sizeVariants={Array.from(sizeMap.values())}
-      specs={dbProduct.specs || []}
+      inStock={raw.data.in_stock !== false}
       offers={uniqueOffers}
       alternatives={alternatives}
       baseSpec={baseSpec}
       availableSpecs={availableSpecs}
+      variantGroups={finalVariantGroups}
+      coupons={coupons}
+      highlights={highlights}
+      groupedSpecs={groupedSpecs}
     />
   );
 }

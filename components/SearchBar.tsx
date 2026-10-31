@@ -11,8 +11,9 @@ type SearchResultItem = {
   brand: string;
   category: string;
   price: string;
-  buy: number;
   image?: string;
+  bucket: 'exact' | 'similar' | 'associated';
+  rank: number;
 };
 
 type SearchApiResponse = {
@@ -42,7 +43,7 @@ export default function SearchBar({
   const pathname = usePathname();
 
   const isGrocery = pathname?.startsWith('/grocery') || variant === 'grocery';
-  const activePlaceholder = placeholder || (isGrocery ? "Search daily essentials, snacks, milk..." : "Search laptops, phones, perfumes...");
+  const activePlaceholder = placeholder || (isGrocery ? "Search daily essentials..." : "Search laptops, phones...");
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -64,7 +65,8 @@ export default function SearchBar({
     }
 
     const controller = new AbortController();
-    const timer = setTimeout(async () => {
+    
+    const fetchResults = async () => {
       setLoading(true);
       setOpen(true);
       try {
@@ -72,15 +74,19 @@ export default function SearchBar({
           signal: controller.signal
         });
         if (res.ok) {
-          const data = await res.json();
+          const data: SearchApiResponse = await res.json();
           setResults(data);
         }
-      } catch (err: any) {
-        if (err?.name !== "AbortError") setResults(null);
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name !== "AbortError") {
+          setResults(null);
+        }
       } finally {
         setLoading(false);
       }
-    }, 180);
+    };
+
+    const timer = setTimeout(fetchResults, 250);
 
     return () => {
       clearTimeout(timer);
@@ -92,15 +98,11 @@ export default function SearchBar({
     e.preventDefault();
     if (!query.trim()) return;
     setOpen(false);
-    
     const basePath = isGrocery ? "/grocery" : "/search";
     router.push(`${basePath}?q=${encodeURIComponent(query.trim())}`);
   }
 
-  const totalCount =
-    (results?.exact?.length || 0) +
-    (results?.similar?.length || 0) +
-    (results?.associated?.length || 0);
+  const totalCount = (results?.exact?.length || 0) + (results?.similar?.length || 0);
 
   return (
     <div ref={containerRef} className={`search ${isGrocery ? 'search--sm' : ''}`} style={{ width: '100%', position: 'relative', zIndex: 9999 }}>
@@ -110,9 +112,7 @@ export default function SearchBar({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onFocus={() => {
-            if (query.trim().length > 0) setOpen(true);
-          }}
+          onFocus={() => { if (query.trim().length > 0) setOpen(true); }}
           placeholder={activePlaceholder}
         />
         <button type="submit" className="btn btn--primary">Search</button>
@@ -134,19 +134,9 @@ export default function SearchBar({
             <div style={{ marginBottom: 12 }}>
               <div className="search__label">Exact Matches</div>
               {results.exact.slice(0, 5).map((item) => (
-                <Link
-                  key={item.id}
-                  href={`/product/${encodeURIComponent(item.id)}`}
-                  onClick={() => setOpen(false)}
-                  className="search__item"
-                  style={{ display: 'flex', gap: '12px', alignItems: 'center', padding: '10px 12px' }}
-                >
+                <Link key={item.id} href={`/product/${encodeURIComponent(item.id)}`} onClick={() => setOpen(false)} className="search__item">
                   <div style={{ width: 44, height: 44, borderRadius: 10, background: 'var(--canvas)', display: 'grid', placeItems: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                    {item.image ? (
-                      <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                    ) : (
-                      <SearchIcon size={18} className="faint" />
-                    )}
+                    {item.image ? <img src={item.image} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : <SearchIcon size={18} className="faint" />}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <span className="search__title" style={{ color: '#000', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</span>
@@ -161,13 +151,7 @@ export default function SearchBar({
             <div>
               <div className="search__label" style={{ color: 'var(--green)' }}>Similar & Alternatives</div>
               {results.similar.slice(0, 3).map((item) => (
-                <Link
-                  key={item.id}
-                  href={`/product/${encodeURIComponent(item.id)}`}
-                  onClick={() => setOpen(false)}
-                  className="search__item"
-                  style={{ padding: '8px 12px' }}
-                >
+                <Link key={item.id} href={`/product/${encodeURIComponent(item.id)}`} onClick={() => setOpen(false)} className="search__item" style={{ padding: '8px 12px' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <span className="search__title" style={{ color: '#000' }}>{item.name}</span>
                     <span className="search__meta">{item.category} • {item.price}</span>
