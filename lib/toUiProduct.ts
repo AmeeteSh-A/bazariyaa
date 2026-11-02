@@ -8,7 +8,7 @@ const CATEGORY_RULES: Array<[RegExp, Category]> = [
   [/camera|lens|photo/i, 'Cameras'],
 ];
 
-const ICONS: Record<Category, string> = { 
+const ICONS: Record<string, string> = { 
   Mobiles: '📱', Laptops: '💻', Audio: '🎧', Wearables: '⌚', Cameras: '📸', Home: '🍳', All: '✨', grocery: '🛒' 
 };
 

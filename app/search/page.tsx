@@ -1,111 +1,101 @@
-import React from "react";
-import Link from "next/link";
-import SearchBar from "@/components/SearchBar";
-import { parseQuery } from "@/lib/search/queryParser";
-import { serverSupabase } from "@/lib/supabaseServer";
-import { money } from "@/utils/format";
+import { getSearchResults } from '@/lib/api';
+import { ProductCard } from '@/components/ProductCard';
+import Link from 'next/link';
 
-export default async function GlobalSearchPage({
-  searchParams 
+export const revalidate = 0; 
+
+const FILTER_CATEGORIES = ['All', 'Mobiles', 'Laptops', 'Audio', 'Wearables', 'Cameras', 'Home', 'Health, Fitness & Beauty'];
+
+export default async function SearchPage({
+  searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; min?: string; max?: string }>;
 }) {
-  const resolved = await searchParams;
-  const q = resolved.q || "";
-  const parsed = parseQuery(q);
-  const supabase = serverSupabase();
-  
-  let dbRows: any[] = [];
+  const params = await searchParams;
+  const q = params.q || '';
+  const category = params.category || 'All';
+  const minPrice = parseInt(params.min || '0');
+  const maxPrice = parseInt(params.max || '999999');
 
-  if (q.trim().length > 0 && supabase) {
-    const { data } = await supabase.rpc("search_catalog", {
-      search_query: parsed.normalizedQuery
-    });
-    if (Array.isArray(data)) {
-      dbRows = data;
-    }
-  }
-
-  const buckets = {
-    exact: dbRows.filter((r: any) => r.bucket === 'exact'),
-    similar: dbRows.filter((r: any) => r.bucket === 'similar'),
-    associated: dbRows.filter((r: any) => r.bucket === 'associated'),
-  };
+  // Simply call the abstracted API service
+  const results = await getSearchResults({ q, category, minPrice, maxPrice });
 
   return (
-    <main className="container section">
-      <div style={{ marginBottom: 32 }}>
-        <Link href="/" className="eyebrow" style={{ display: 'inline-block', marginBottom: 16 }}>
-          ← Back to Home
-        </Link>
-        <h1 className="h1">Search Results for "{q}"</h1>
-        <div style={{ marginTop: 24, maxWidth: 600 }}>
-          <SearchBar initialValue={q} variant="global" />
-        </div>
-        {parsed.normalizedQuery && parsed.normalizedQuery !== q.toLowerCase().trim() && (
-          <p className="sub" style={{ marginTop: 12, color: 'var(--violet)' }}>
-            Showing results for <b>{parsed.normalizedQuery}</b>
-          </p>
-        )}
-      </div>
+    <div className="max-w-7xl mx-auto px-4 py-8 flex flex-col md:flex-row gap-8">
+      {/* FILTER SIDEBAR */}
+      <aside className="w-full md:w-64 flex-shrink-0">
+        <form method="GET" action="/search" className="sticky top-24 bg-white p-6 rounded-xl border border-gray-100 shadow-sm space-y-8">
+          <input type="hidden" name="q" value={q} />
+          
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-4">Category</h3>
+            <div className="space-y-3">
+              {FILTER_CATEGORIES.map(cat => (
+                <label key={cat} className="flex items-center gap-3 cursor-pointer group">
+                  <input 
+                    type="radio" 
+                    name="category" 
+                    value={cat} 
+                    defaultChecked={category === cat}
+                    className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300"
+                  />
+                  <span className="text-sm text-gray-600 group-hover:text-gray-900">{cat}</span>
+                </label>
+              ))}
+            </div>
+          </div>
 
-      <section className="section section--tight">
-        <h2 className="h2" style={{ marginBottom: 16 }}>
-          Exact Matches ({buckets.exact.length})
-        </h2>
-        <div className="grid g4">
-          {buckets.exact.map((item: any) => (
-            <Link
-              key={item.id}
-              href={`/product/${encodeURIComponent(item.id)}`}
-              className="card card--hover pcard"
-            >
-              {item.image && (
-                <div className="pcard__img" style={{ background: 'var(--canvas)', padding: 16, height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <img src={item.image} alt={item.name} style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
-                </div>
-              )}
-              <div className="pcard__body">
-                <div className="eyebrow">{item.category}</div>
-                <div className="pcard__name">{item.name}</div>
-                <div className="pcard__foot">
-                  <div className="pcard__price" style={{ color: 'var(--violet)' }}>{money(item.price)}</div>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-      </section>
+          <div>
+            <h3 className="font-semibold text-gray-900 mb-4">Price Range (AED)</h3>
+            <div className="flex items-center gap-3">
+              <input 
+                type="number" 
+                name="min" 
+                placeholder="Min" 
+                defaultValue={minPrice > 0 ? minPrice : ''}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <span className="text-gray-400">-</span>
+              <input 
+                type="number" 
+                name="max" 
+                placeholder="Max" 
+                defaultValue={maxPrice < 999999 ? maxPrice : ''}
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
 
-      {buckets.similar.length > 0 && (
-        <section className="section section--tight">
-          <h2 className="h2" style={{ marginBottom: 16 }}>
-            Similar & Alternatives ({buckets.similar.length})
-          </h2>
-          <div className="grid g4">
-            {buckets.similar.map((item: any) => (
-              <Link
-                key={item.id}
-                href={`/product/${encodeURIComponent(item.id)}`}
-                className="card card--hover pcard"
-              >
-                {item.image && (
-                  <div className="pcard__img" style={{ background: 'var(--canvas)', padding: 16, height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <img src={item.image} alt={item.name} style={{ maxHeight: '100%', maxWidth: '100%', objectFit: 'contain' }} />
-                  </div>
-                )}
-                <div className="pcard__body">
-                  <div className="eyebrow" style={{ color: 'var(--green)' }}>{item.category}</div>
-                  <div className="pcard__name">{item.name}</div>
-                  <div className="pcard__foot">
-                    <div className="pcard__price">{money(item.price)}</div>
-                  </div>
-                </div>
+          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors">
+            Apply Filters
+          </button>
+        </form>
+      </aside>
+
+      {/* RESULTS GRID */}
+      <main className="flex-1">
+        <div className="mb-6 flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">
+            {q ? `Results for "${q}"` : 'All Products'}
+          </h1>
+          <span className="text-gray-500 text-sm">{results.length} products found</span>
+        </div>
+
+        {results.length > 0 ? (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {results.map(product => (
+              <Link key={product.id} href={`/product/${product.slug}`}>
+                <ProductCard p={product} />
               </Link>
             ))}
           </div>
-        </section>
-      )}
-    </main>
+        ) : (
+          <div className="text-center py-24 bg-gray-50 rounded-2xl border border-gray-100">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">No products found</h3>
+            <p className="text-gray-500 max-w-sm mx-auto">Try adjusting your filters or searching for a broader term.</p>
+          </div>
+        )}
+      </main>
+    </div>
   );
 }
