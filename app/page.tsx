@@ -1,5 +1,4 @@
 import Landing from '@/views/Landing';
-import { normalizeProduct } from '@/lib/adapter';
 import { toUiProduct } from '@/lib/toUiProduct';
 import { serverSupabase } from '@/lib/supabaseServer';
 
@@ -9,7 +8,7 @@ const LANDING_CATEGORIES = [
   { name: 'Mobiles & Wearables', icon: '📱', count: '184k', key: 'Mobiles' },
   { name: 'Computers', icon: '💻', count: '96k', key: 'Laptops' },
   { name: 'Audio', icon: '🎧', count: '52k', key: 'Audio' },
-  { name: 'Cameras', icon: '📷', count: '31k', key: 'Cameras' },
+  { name: 'Cameras', icon: '📸', count: '31k', key: 'Cameras' },
   { name: 'Home & Kitchen', icon: '🍳', count: '210k', key: 'Home' },
   { name: 'Watches', icon: '⌚', count: '19k', key: 'Wearables' },
   { name: 'Grocery', icon: '🛒', count: '48k', key: 'grocery' }
@@ -22,7 +21,7 @@ const TESTIMONIALS = [
 ];
 
 const LANDING_FAQS = [
-  { q: 'How is the recommendation score calculated?', a: 'It blends verified review sentiment, value-for-money against similar products, price fairness versus history, warranty and reliability signals. Weights are published and identical for every product — brands cannot buy a better score.' },
+  { q: 'How is the recommendation score calculated?', a: 'It blends verified review sentiment, value-for-money against similar products, price fairness versus history, warranty and reliability signals. Weights are published and identical for every product   brands cannot buy a better score.' },
   { q: 'Do brands pay to rank higher?', a: 'Never. Rankings are driven purely by data and verified reviews. We may earn a small affiliate commission if you buy through a store link, but it never changes a score or verdict.' },
   { q: 'How do you detect fake reviews?', a: 'Our Review Trust Score flags coordinated posting patterns, unverified purchases and language anomalies. Only reviews that clear the check count toward a rating.' },
   { q: 'Where does the price history come from?', a: 'We track prices across major Indian retailers multiple times a day and store the full history. That powers the best time to buy verdict and price-drop alerts.' },
@@ -32,37 +31,25 @@ const LANDING_FAQS = [
 export default async function Page() {
   const supabase = serverSupabase();
   let live: ReturnType<typeof toUiProduct>[] = [];
-  
+
   if (supabase) {
-    const { data: rawProducts } = await supabase
-      .from('raw_products')
-      .select('id, data')
-      .limit(100);
+    const { data: dbProducts } = await supabase
+      .from('products')
+      .select('id, slug, name, brand, category, price, mrp, rating, reviews, currency, image, history')
+      .limit(100); 
 
-    if (rawProducts && rawProducts.length > 0) {
-      const ids = rawProducts.map(p => p.id);
-
-      const { data: historyData } = await supabase
-        .from('raw_price_history')
-        .select('id, data')
-        .in('id', ids);
-
-      const historyMap = new Map((historyData || []).map(h => [h.id, h.data]));
-
-      const allNormalized = rawProducts.map(row => {
-        const hist = historyMap.get(row.id) || null;
-        return normalizeProduct(row.data, hist, row.id);
-      });
-
-      allNormalized.sort((a, b) => b.buy - a.buy);
-
-      live = allNormalized.slice(0, 24).map(dbProd => toUiProduct(dbProd));
+    if (dbProducts && dbProducts.length > 0) {
+      const allNormalized = dbProducts.map(row => toUiProduct(row));
+      
+      allNormalized.sort((a, b) => b.recommended - a.recommended);
+      
+      live = allNormalized.slice(0, 24);
     }
   }
-  
+
   return (
-    <Landing 
-      liveProducts={live} 
+    <Landing
+      liveProducts={live}
       categories={LANDING_CATEGORIES}
       testimonials={TESTIMONIALS as any[]}
       faqs={LANDING_FAQS}

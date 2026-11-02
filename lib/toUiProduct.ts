@@ -1,4 +1,3 @@
-import type { Product as DbProduct } from './adapter';
 import type { Category, Product as UiProduct } from '../types';
 
 const CATEGORY_RULES: Array<[RegExp, Category]> = [
@@ -9,43 +8,56 @@ const CATEGORY_RULES: Array<[RegExp, Category]> = [
   [/camera|lens|photo/i, 'Cameras'],
 ];
 
-const ICONS: Record<Category, string> = { Mobiles: '📱', Laptops: '💻', Audio: '🎧', Wearables: '⌚', Cameras: '📷', Home: '🏠' };
+const ICONS: Record<Category, string> = { 
+  Mobiles: '📱', Laptops: '💻', Audio: '🎧', Wearables: '⌚', Cameras: '📸', Home: '🍳', All: '✨', grocery: '🛒' 
+};
 
 function toCategory(cat: string): Category {
   return CATEGORY_RULES.find(([re]) => re.test(cat))?.[1] ?? 'Home';
 }
 
-export function toUiProduct(p: DbProduct): UiProduct & { images?: string[] } {
-  const category = toCategory(p.cat);
+export function toUiProduct(p: any): UiProduct & { images?: string[] } {
+  const category = toCategory(p.category || '');
   
-  const currency = p.price.split(' ')[0] || 'AED'; 
-  const mrp = p.was ? parseFloat(p.was.replace(/[^0-9.]/g, '')) || p.numericPrice : p.numericPrice;
-  const prices = p.history.map(h => h.price).filter(n => n > 0);
-  const history = prices.length >= 2 ? prices : [p.numericPrice, p.numericPrice];
+  const historyPrices = Array.isArray(p.history) ? p.history : [];
+  const lastPrice = historyPrices.length > 0 ? historyPrices[historyPrices.length - 1] : p.price;
   
-  const [brand, ...rest] = p.name.split(' ');
+  let trend: 'up' | 'down' | 'stable' = 'stable';
+  let trendPct = 0;
   
+  if (lastPrice > 0 && p.price !== lastPrice) {
+    trendPct = Math.round(((p.price - lastPrice) / lastPrice) * 100);
+    if (trendPct > 0) trend = 'up';
+    if (trendPct < 0) trend = 'down';
+  }
+
+  const discount = p.mrp > p.price ? ((p.mrp - p.price) / p.mrp) * 100 : 0;
+  const buyScore = Math.min(99, Math.max(70, Math.round(75 + (p.rating * 3.5) + (discount * 0.2))));
+  
+  const parsedReviews = parseInt(String(p.reviews).replace(/,/g, '')) || 0;
+  const trustScore = parsedReviews > 100 ? 95 : (parsedReviews > 10 ? 85 : 75);
+
+  const [brand, ...rest] = (p.name || '').split(' ');
+
   return {
     id: p.id,
-    
-    slug: encodeURIComponent(p.id), 
-    
+    slug: encodeURIComponent(p.id),
     name: rest.join(' ') || p.name,
-    brand,
+    brand: p.brand !== 'Unknown' ? p.brand : brand,
     category,
-    price: p.numericPrice,
-    mrp: Math.max(mrp, p.numericPrice),
-    rating: p.rating,
-    reviews: p.reviews,
-    recommended: p.buy,
-    trust: parseInt(p.real, 10) || 90,
-    value: 8.5,
-    trend: p.trend === 'flat' || !p.trend ? 'stable' : p.trend,
-    trendPct: p.trendPct || 0, 
-    history,
-    icon: ICONS[category],
-    currency,
-    image: p.images[0], 
-    images: p.images,
+    price: Number(p.price) || 0,
+    mrp: Math.max(Number(p.mrp) || 0, Number(p.price) || 0),
+    rating: Number(p.rating) || 0,
+    reviews: String(p.reviews || '0'),
+    recommended: buyScore,
+    trust: trustScore,
+    value: 8.5, 
+    trend,
+    trendPct: Math.abs(trendPct),
+    history: historyPrices.length >= 2 ? historyPrices : [Number(p.price), Number(p.price)],
+    icon: ICONS[category] || '✨',
+    currency: p.currency || 'AED',
+    image: p.image || null,
+    images: Array.isArray(p.images) ? p.images : (p.image ? [p.image] : []),
   };
 }
