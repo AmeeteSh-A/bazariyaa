@@ -1,17 +1,17 @@
-export type Retailer = 
-  | 'Amazon' 
-  | 'Flipkart' 
-  | 'Croma' 
-  | 'Reliance Digital' 
-  | 'Tata CLiQ' 
-  | 'Blinkit' 
-  | 'Zepto' 
-  | 'Instamart' 
-  | 'BigBasket'
+export type Retailer =
+  | 'Amazon'
+  | 'Flipkart'
+  | 'Croma'
+  | 'Reliance Digital'
+  | 'Tata CLiQ'
   | 'Amazon AE'
   | 'Sharaf DG'
   | 'Noon'
+  | 'Noon Minutes'
+  | 'Talabat Mart'
+  | 'Careem Quik'
   | 'Carrefour'
+  | 'Lulu'
   | (string & {});
 
 export interface RetailerOffer {
@@ -71,7 +71,10 @@ export interface Review {
   product?: string;
 }
 
-export interface Faq { q: string; a: string; }
+export interface Faq {
+  q: string;
+  a: string;
+}
 
 export type Unit = 'L' | 'ml' | 'kg' | 'g' | 'pc';
 
@@ -84,27 +87,56 @@ export interface GroceryCategory {
   subs: string[];
 }
 
-export interface GroceryCategory {
-  cat: string;
-  name: string;
-  icon: string;
-  tint: string;
-  count: number;
+// --- NEW THREE-LAYER GROCERY SYSTEM ---
+
+export type GroceryForm = 'fresh' | 'juice' | 'dried' | 'frozen' | 'canned' | 'flavored' | 'powder' | (string & {});
+
+export interface GroceryConcept {
+  id: string;
+  slug: string;
+  parent_id: string | null;
+  kind: string; 
+}
+
+export interface GroceryConceptAlias {
+  concept_id: string;
+  alias: string;
+  lang: string;
+  kind: 'synonym' | 'transliteration' | 'misspelling';
 }
 
 export interface GroceryProduct {
   id: string;
-  retailer: string;
-  product_url: string;
-  sku: string;
-  name: string;
   brand: string;
-  category: string;
-  price: number;
+  variant: string;
+  normalized_size: string;
+}
+
+export interface GroceryListing {
+  id: string;
+  product_id: string;
+  concept_id: string;
+  retailer: Retailer;
+  sku: string;
+  title: string; 
+  form: GroceryForm;
+  variety: string;
+  origin: string;
+  is_organic: boolean;
+  base_qty: number;
+  base_unit: Unit;
+  price: number; 
   regular_price: number;
-  currency: string;
-  size_value: number;
-  size_unit: string;
+  unit_price: number; 
+  match_confidence: number;
   in_stock: boolean;
+  last_seen_at: string;
+  product_url: string;
   image_url: string;
+}
+
+export interface PriceHistory {
+  listing_id: string;
+  price: number;
+  seen_at: string;
 }

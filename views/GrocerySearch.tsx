@@ -6,7 +6,7 @@ import { GroceryCard } from '@/components/GroceryCard';
 import { Modal } from '@/components/Modal';
 import { CheckIcon, ChevronRight, ClipIcon, ImageIcon, ListIcon, MicIcon, PinIcon, UploadIcon } from '@/components/Icons';
 import type { GroceryCategory } from '@/types';
-import { inr, unitPrice } from '@/utils/format';
+import { inr } from '@/utils/format';
 
 type Sort = 'price' | 'unit' | 'discount';
 interface ListItem { name: string; qty: string; base: number; }
@@ -39,21 +39,23 @@ function parseList(text: string): ListItem[] {
 
 export default function GrocerySearch({
   categories,
-  initialProducts = []
+  searchResults
 }: {
   categories: GroceryCategory[];
-  initialProducts?: any[]; 
+  searchResults?: { interpreted: any; sections: any[]; facets: any };
 }) {
   const pathParams = useParams<{ category?: string }>();
   const params = useSearchParams();
   const router = useRouter();
   
   const activeCatId = params.get('category') || pathParams.category;
-  const activeCat = categories.find(c => c.cat === activeCatId) ?? categories[0];
+  const activeCat = categories.find(c => c.id === activeCatId) ?? categories[0];
   
   const [searchQuery, setSearchQuery] = useState(params.get('q') || '');
-  const [sub, setSub] = useState('All');
-  const [sort, setSort] = useState<Sort>('price');
+  const [activeBrand, setActiveBrand] = useState(params.get('brand') || 'All');
+  const [activeForm, setActiveForm] = useState(params.get('form') || 'All');
+  const [sort, setSort] = useState<Sort>((params.get('sort') as Sort) || 'price');
+  
   const [modal, setModal] = useState<'type' | 'image' | null>(params.get('list') ? 'type' : null);
   const [text, setText] = useState('');
   const [list, setList] = useState<ListItem[] | null>(null);
@@ -62,90 +64,52 @@ export default function GrocerySearch({
   const resultsRef = useRef<HTMLDivElement>(null);
   const q = (params.get('q') ?? '').toLowerCase();
 
-  const availableBrands = useMemo(() => {
-    const brands = initialProducts.map(p => p.brand).filter(Boolean);
-    return ['All', ...Array.from(new Set(brands))];
-  }, [initialProducts]);
+  const sections = searchResults?.sections || [];
+  const facets = searchResults?.facets || {};
+  const brands = facets.brand || [];
+  const forms = facets.form || [];
 
-  useEffect(() => { 
-    setSub('All'); 
+useEffect(() => { 
+    setActiveBrand('All'); 
     subsRef.current?.scrollTo({ left: 0 }); 
-  }, [activeCat?.cat]);
+  }, [activeCat?.id, q]);
 
-const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
+  const updateUrl = (updates: Record<string, string | null>) => {
     const p = new URLSearchParams(params.toString());
-    if (searchQuery.trim()) p.set('q', searchQuery.trim());
-    else p.delete('q');
+    Object.entries(updates).forEach(([k, v]) => {
+      if (v && v !== 'All') p.set(k, v);
+      else p.delete(k);
+    });
     router.push(`/grocery?${p.toString()}`);
   };
 
-  const setCategory = (catId: string) => {
-    const p = new URLSearchParams(params.toString());
-    if (catId && catId !== 'all') p.set('category', catId);
-    else p.delete('category');
-    router.push(`/grocery?${p.toString()}`);
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateUrl({ q: searchQuery.trim(), brand: null, form: null });
   };
 
   const products = useMemo(() => {
-    let l = initialProducts;
-    
-    const categoryMap: Record<string, string[]> = {
-      produce: ['fruit', 'vegetable', 'mango', 'tomato', 'avocado', 'farm fresh', 'produce'],
-      meat: ['chicken', 'meat', 'fish', 'mutton', 'pork'],
-      snacks: ['snack', 'chips', 'biscuit', 'namkeen'],
-      oils: ['oil', 'ghee', 'butter'],
-      baby: ['baby', 'diaper', 'wipes']
-    };
+    let l = [...sections];
 
-    if (q) {
-      l = l.filter(p => (p.brand + ' ' + p.name).toLowerCase().includes(q.toLowerCase()));
-    } else {
-      l = l.filter(p => {
-        if (!activeCat) return true;
-        const pCat = (p.category || '').toLowerCase().trim();
-        const aCat = (activeCat.cat || '').toLowerCase().trim();   
-        
-        if (!pCat) return false; 
-        
-        let matchesCat = pCat.includes(aCat) || aCat.includes(pCat);
-        if (!matchesCat && categoryMap[aCat]) {
-          matchesCat = categoryMap[aCat].some(keyword => pCat.includes(keyword));
-        }
-          
-        const matchesSub = sub === 'All' ? true : p.brand === sub;
-        return matchesCat && matchesSub;
-      });
+    if (activeBrand !== 'All') {
+      l = l.filter(s => s.title.toLowerCase().includes(activeBrand.toLowerCase()));
+    }
+    if (activeForm !== 'All') {
+      l = l.filter(s => s.forms?.some((f: any) => f.form.toLowerCase() === activeForm.toLowerCase()));
     }
 
-    l = [...l].sort((a, b) => {
-      const aBase = a.sizes?.[0]?.stores?.[0] || { price: 0, mrp: 0 };
-      const bBase = b.sizes?.[0]?.stores?.[0] || { price: 0, mrp: 0 };
-
-      const aPrice = aBase.price;
-      const bPrice = bBase.price;
-      const aMrp = aBase.mrp;
-      const bMrp = bBase.mrp;
+    return l.sort((a, b) => {
+      const aBest = a.forms?.[0]?.sizes?.[0]?.stores?.[0]?.price || 0;
+      const bBest = b.forms?.[0]?.sizes?.[0]?.stores?.[0]?.price || 0;
       
       switch (sort) {
-        case 'price': return aPrice - bPrice; 
-        case 'discount': {
-          const aPct = aMrp > aPrice ? (aMrp - aPrice) / aMrp : 0;
-          const bPct = bMrp > bPrice ? (bMrp - bPrice) / bMrp : 0;
-          return bPct - aPct;
-        }
-        case 'unit': {
-          const aUnit = unitPrice(aPrice, a.sizes?.[0]?.size_value || 1, a.sizes?.[0]?.size_unit || 'pc').value;
-          const bUnit = unitPrice(bPrice, b.sizes?.[0]?.size_value || 1, b.sizes?.[0]?.size_unit || 'pc').value;
-          return aUnit - bUnit;
-        }
-        default: return aPrice - bPrice;
+        case 'price': return aBest - bBest;
+        case 'unit': return (a.forms?.[0]?.sizes?.[0]?.from_unit_price || 0) - (b.forms?.[0]?.sizes?.[0]?.from_unit_price || 0);
+        default: return aBest - bBest;
       }
     });
-    
-    return l;
-  }, [initialProducts, activeCat, sub, sort, q]);  
-  
+  }, [sections, activeBrand, activeForm, sort]);
+
   const basket = useMemo(() => {
     if (!list?.length) return null;
     const totals = STORES.map(s => ({ 
@@ -168,7 +132,7 @@ const handleSearch = (e: React.FormEvent) => {
           <span className="deliver"><PinIcon size={15} color="var(--violet)" /><span className="muted">Deliver to</span><b>HSR Layout, Bengaluru 560102</b><a href="#">Change</a></span>
           <div className="eyebrow" style={{ marginTop: 32 }}>Grocery price comparison</div>
           <h1 className="h1" style={{ fontSize: 'clamp(30px, 4vw, 40px)', marginTop: 10 }}>Find the best grocery prices without checking every store.</h1>
-          <p className="lead" style={{ marginTop: 14, fontSize: 17 }}>Search an item, or drop your entire list — we compare it across Blinkit, Zepto, Instamart and more.</p>
+          <p className="lead" style={{ marginTop: 14, fontSize: 17 }}>Search an item, or drop your entire list — we compare it across multiple UAE retailers.</p>
           
           <div style={{ marginTop: 28, maxWidth: 760 }}>
             <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, width: '100%' }}>
@@ -191,7 +155,6 @@ const handleSearch = (e: React.FormEvent) => {
             <button type="button" className="chip" onClick={() => setModal('type')}><ListIcon size={15} color="var(--violet)" />Type list</button>
             <button type="button" className="chip" onClick={() => setModal('image')}><ImageIcon size={15} color="var(--violet)" />Upload image</button>
             <button type="button" className="chip" onClick={() => setModal('type')}><ClipIcon size={15} color="var(--violet)" />Paste list</button>
-            <button type="button" className="chip chip--dashed" onClick={() => { setText(SAMPLE_LIST); setModal('type'); }}><MicIcon size={15} color="var(--violet)" />Speak</button>
           </div>
         </div>
         <div className="gs-hero__banner"><img src="/assets/grocery/hero-banner.png" alt="Happy shopper next to Bazariyaa review badges" /></div>
@@ -201,10 +164,24 @@ const handleSearch = (e: React.FormEvent) => {
         <aside className="gs-side" aria-label="Grocery categories">
           <div className="faint" style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', padding: '0 12px 10px' }}>Grocery</div>
           {categories.map(c => (
-            <button key={c.cat} type="button" className="gs-cat" aria-current={c.cat === activeCat?.cat} onClick={() => setCategory(c.cat)}>
-              <span className="gs-cat__ic">{c.icon}</span>{c.name}<span className="gs-cat__n">{c.count}</span>
-            </button>
-          ))}
+  <button key={c.id} type="button" className="gs-cat" aria-current={c.id === activeCat?.id} onClick={() => updateUrl({ category: c.id, q: null })}>
+    <span className="gs-cat__ic">{c.icon}</span>{c.name}<span className="gs-cat__n">{c.count}</span>
+  </button>
+))}
+          
+          {forms.length > 0 && (
+            <>
+              <div className="faint" style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', padding: '24px 12px 10px' }}>Form</div>
+              <button type="button" className="gs-cat" aria-current={activeForm === 'All'} onClick={() => { setActiveForm('All'); updateUrl({ form: 'All' }); }}>
+                <span className="gs-cat__ic">🍽️</span>All Forms
+              </button>
+              {forms.map((f: any) => (
+                <button key={f.value} type="button" className="gs-cat" aria-current={activeForm === f.value} onClick={() => { setActiveForm(f.value); updateUrl({ form: f.value }); }}>
+                  <span className="gs-cat__ic">📦</span>{f.value} <span className="gs-cat__n">{f.count}</span>
+                </button>
+              ))}
+            </>
+          )}
         </aside>
 
         <div style={{ minWidth: 0 }} ref={resultsRef}>
@@ -230,30 +207,36 @@ const handleSearch = (e: React.FormEvent) => {
             </section>
           )}
 
-          <div className="scroll-x gs-mobile-cats" role="group" aria-label="Category">
-            {categories.map(c => <button key={c.cat} type="button" className="chip chip--soft" aria-pressed={c.cat === activeCat?.cat} onClick={() => setCategory(c.cat)}>{c.icon} {c.name}</button>)}
-          </div>
-
           <div style={{ position: 'relative', marginBottom: 20 }}>
             <div className="scroll-x" ref={subsRef} style={{ paddingRight: 44 }} role="group" aria-label="Brands">
-              {availableBrands.map(s => <button key={s} type="button" className="chip" aria-pressed={s === sub} onClick={() => setSub(s)}>{s}</button>)}
+              <button type="button" className="chip" aria-pressed={activeBrand === 'All'} onClick={() => { setActiveBrand('All'); updateUrl({ brand: 'All' }); }}>All Brands</button>
+              {brands.map((b: any) => (
+                <button key={b.value} type="button" className="chip" aria-pressed={b.value === activeBrand} onClick={() => { setActiveBrand(b.value); updateUrl({ brand: b.value }); }}>
+                  {b.value} ({b.count})
+                </button>
+              ))}
             </div>
             <button type="button" className="icon-btn" aria-label="Scroll brands" style={{ position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', width: 34, height: 34 }} onClick={() => subsRef.current?.scrollBy({ left: 260, behavior: 'smooth' })}><ChevronRight size={16} /></button>
           </div>
 
           <div className="row" style={{ justifyContent: 'space-between', marginBottom: 18 }}>
-            <div><h2 className="h3" style={{ fontSize: 22 }}>{q ? 'Results for “' + q + '”' : activeCat?.name}<span className="faint"> · {sub}</span></h2><div className="muted" style={{ fontSize: 13 }}>Showing {products.length} products · prices compared across retailers</div></div>
+            <div>
+              <h2 className="h3" style={{ fontSize: 22 }}>
+                {searchResults?.interpreted?.query ? `Results for “${searchResults.interpreted.query}”` : activeCat?.name}
+                <span className="faint"> · {activeBrand}</span>
+              </h2>
+              <div className="muted" style={{ fontSize: 13 }}>Showing {products.length} products · prices compared across retailers</div>
+            </div>
             <label className="row" style={{ fontSize: 13 }}><span className="muted">Sort</span>
-              <select className="chip" value={sort} onChange={e => setSort(e.target.value as Sort)}>
+              <select className="chip" value={sort} onChange={e => { setSort(e.target.value as Sort); updateUrl({ sort: e.target.value }); }}>
                 <option value="price">Lowest price</option>
                 <option value="unit">Lowest unit price</option>
-                <option value="discount">Biggest discount</option>
               </select>
             </label>
           </div>
 
           {products.length ? (
-            <div style={{ display: 'grid', gap: 12 }}>{products.map((p: any) => <GroceryCard key={p.id} p={p} />)}</div>
+            <div style={{ display: 'grid', gap: 12 }}>{products.map((p: any) => <GroceryCard key={p.key} p={p} />)}</div>
           ) : (
             <div className="card" style={{ padding: 48, textAlign: 'center' }}><div style={{ fontSize: 40 }}>🧺</div><b style={{ display: 'block', marginTop: 12 }}>No products here yet</b><span className="muted" style={{ fontSize: 13.5 }}>Try another brand or search for a specific item.</span></div>
           )}
