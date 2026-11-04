@@ -1,0 +1,160 @@
+'use client';
+
+import { createContext, useContext, useState, useMemo, useEffect, ReactNode } from 'react';
+import { inr } from '@/utils/format';
+
+export type CartItem = {
+  id: string;
+  title: string;
+  variantLabel: string;
+  sizeLabel: string;
+  price: number;
+  storeName: string;
+  storeUrl: string;
+  imageUrl: string;
+  qty: number;
+};
+
+interface CartContextType {
+  items: CartItem[];
+  addToCart: (item: Omit<CartItem, 'qty'>) => void;
+  removeFromCart: (id: string) => void;
+  updateQty: (id: string, delta: number) => void;
+  isCartOpen: boolean;
+  setCartOpen: (open: boolean) => void;
+  totalItems: number;
+}
+
+const CartContext = createContext<CartContextType | null>(null);
+
+export function useCart() {
+  const ctx = useContext(CartContext);
+  if (!ctx) throw new Error('useCart must be used within CartProvider');
+  return ctx;
+}
+
+export function CartProvider({ children }: { children: ReactNode }) {
+  const [items, setItems] = useState<CartItem[]>([]);
+  const [isCartOpen, setCartOpen] = useState(false);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('bazariyaa_cart');
+    if (saved) setItems(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('bazariyaa_cart', JSON.stringify(items));
+  }, [items]);
+
+  const addToCart = (newItem: Omit<CartItem, 'qty'>) => {
+    setItems(prev => {
+      const existing = prev.find(i => i.id === newItem.id);
+      if (existing) {
+        return prev.map(i => i.id === newItem.id ? { ...i, qty: i.qty + 1 } : i);
+      }
+      return [...prev, { ...newItem, qty: 1 }];
+    });
+  };
+
+  const updateQty = (id: string, delta: number) => {
+    setItems(prev => prev.map(i => {
+      if (i.id === id) return { ...i, qty: Math.max(1, i.qty + delta) };
+      return i;
+    }));
+  };
+
+  const removeFromCart = (id: string) => setItems(prev => prev.filter(i => i.id !== id));
+
+  const totalItems = items.reduce((acc, item) => acc + item.qty, 0);
+
+  return (
+    <CartContext.Provider value={{ items, addToCart, removeFromCart, updateQty, isCartOpen, setCartOpen, totalItems }}>
+      {children}
+      <CartDrawer />
+    </CartContext.Provider>
+  );
+}
+
+function CartDrawer() {
+  const { items, isCartOpen, setCartOpen, updateQty, removeFromCart } = useCart();
+
+  const groupedCart = useMemo(() => {
+    const groups: Record<string, { items: CartItem[], total: number }> = {};
+    items.forEach(item => {
+      if (!groups[item.storeName]) groups[item.storeName] = { items: [], total: 0 };
+      groups[item.storeName].items.push(item);
+      groups[item.storeName].total += item.price * item.qty;
+    });
+    return groups;
+  }, [items]);
+
+  if (!isCartOpen) return null;
+
+  return (
+    <>
+      <style>{`
+        @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      `}</style>
+      <div 
+        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 9998, animation: 'fadeIn 0.2s ease-out' }} 
+        onClick={() => setCartOpen(false)} 
+      />
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: '100%', maxWidth: 400,
+        backgroundColor: '#fff', zIndex: 9999, display: 'flex', flexDirection: 'column',
+        boxShadow: '-4px 0 24px rgba(0,0,0,0.1)', overflow: 'hidden',
+        animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+      }}>
+        <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: 20, margin: 0, fontWeight: 700 }}>Your Basket</h2>
+          <button onClick={() => setCartOpen(false)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer' }}>×</button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+          {items.length === 0 ? (
+            <div style={{ textAlign: 'center', color: 'var(--faint)', marginTop: 40 }}>Your cart is empty.</div>
+          ) : (
+            Object.entries(groupedCart).map(([store, data]) => (
+              <div key={store} style={{ marginBottom: 32 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', color: 'var(--violet)', marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{store}</span>
+                  <span>{inr(data.total)}</span>
+                </div>
+                
+                <div style={{ display: 'grid', gap: 16 }}>
+                  {data.items.map(item => (
+                    <div key={item.id} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <img src={item.imageUrl} alt={item.title} style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--divider)' }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
+                        <div style={{ fontSize: 12, color: 'var(--faint)' }}>{item.variantLabel} · {item.sizeLabel}</div>
+                        <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 4 }}>{inr(item.price)}</div>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--divider)', borderRadius: 8, overflow: 'hidden' }}>
+                        <button onClick={() => updateQty(item.id, -1)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }}>-</button>
+                        <span style={{ fontSize: 13, width: 20, textAlign: 'center', fontWeight: 600 }}>{item.qty}</span>
+                        <button onClick={() => updateQty(item.id, 1)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }}>+</button>
+                      </div>
+                      <button onClick={() => removeFromCart(item.id)} style={{ padding: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'red' }}>🗑</button>
+                    </div>
+                  ))}
+                </div>
+
+                <a 
+                  href={data.items[0]?.storeUrl} 
+                  target="_blank" 
+                  rel="noreferrer"
+                  className="btn btn--primary btn--block" 
+                  style={{ marginTop: 16, borderRadius: 8, padding: '10px 0', textDecoration: 'none' }}
+                >
+                  Checkout at {store} ({inr(data.total)})
+                </a>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </>
+  );
+}

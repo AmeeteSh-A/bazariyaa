@@ -2,6 +2,8 @@ import { Suspense } from 'react';
 import GrocerySearch from '@/views/GrocerySearch';
 import { serverSupabase } from '@/lib/supabaseServer';
 
+import { CartProvider } from '@/components/Cart';
+
 export const revalidate = 60;
 
 export default async function Page({
@@ -46,7 +48,9 @@ export default async function Page({
 
   return (
     <Suspense fallback={<div className="container" style={{ padding: '64px 0', textAlign: 'center' }}>Loading shelves...</div>}>
-      <GrocerySearch categories={safeCategories} searchResults={searchResults} />
+      <CartProvider>
+        <GrocerySearch categories={safeCategories} searchResults={searchResults} />
+      </CartProvider>
     </Suspense>
   );
 }
