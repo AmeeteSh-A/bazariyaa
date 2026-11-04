@@ -5,7 +5,7 @@ import { inr } from '@/utils/format';
 import { HeartIcon } from './Icons';
 import { useCart } from './Cart';
 
-type GroceryStore = { name: string; listing_title: string; price: number; inStock: boolean; url: string; };
+type GroceryStore = { name: string; listing_title: string; price: number; inStock: boolean; url: string; image_url: string; };
 type GrocerySize = { sizeKey: string; size_value: number; size_unit: string; from_unit_price: number; stores: GroceryStore[]; };
 type GroceryVariant = { brand: string; variant: string; form: string; variant_label: string; sizes: GrocerySize[]; };
 
@@ -35,30 +35,32 @@ export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
   
   const [variantIdx, setVariantIdx] = useState(0);
   const [sizeIdx, setSizeIdx] = useState(0);
-  const [selectedStoreName, setSelectedStoreName] = useState<string | null>(null);
+  const [selectedStoreIndex, setSelectedStoreIndex] = useState(0);
   
   const currentVariant = p.variants[variantIdx] || p.variants[0];
   const currentSize = currentVariant?.sizes[sizeIdx] || currentVariant?.sizes[0];
   const dynamicStores = currentSize?.stores || [];
   
   useEffect(() => {
-    setSelectedStoreName(dynamicStores[0]?.name || null);
-  }, [variantIdx, sizeIdx, dynamicStores]);
+    setSelectedStoreIndex(0);
+  }, [variantIdx, sizeIdx]);
 
   if (!currentVariant || !currentSize || dynamicStores.length === 0) return null;
 
-  const activeStore = dynamicStores.find(s => s.name === selectedStoreName) || dynamicStores[0];
+  const activeStore = dynamicStores[selectedStoreIndex] || dynamicStores[0];
+  const displayImage = activeStore.image_url || p.image_url;
 
   const handleAddToCart = () => {
     addToCart({
-      id: `${p.key}-${currentVariant.variant_label}-${currentSize.sizeKey}-${activeStore.name}`,
+      id: `${p.key}-${currentVariant.variant_label}-${currentSize.sizeKey}-${activeStore.name}-${activeStore.price}`,
       title: p.title,
       variantLabel: currentVariant.variant_label,
       sizeLabel: currentSize.sizeKey,
       price: activeStore.price,
       storeName: activeStore.name,
       storeUrl: activeStore.url,
-      imageUrl: p.image_url
+      listingTitle: activeStore.listing_title,
+      imageUrl: displayImage
     });
   };
 
@@ -66,8 +68,8 @@ export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
     <article className="card card--hover gcard">
       <div className="gcard__product">
         <div className="gcard__img">
-          {p.image_url ? (
-            <img src={p.image_url} alt={p.title} loading="lazy" />
+          {displayImage ? (
+            <img src={displayImage} alt={p.title} loading="lazy" />
           ) : (
             <span className="emoji" aria-hidden="true">🛒</span>
           )}
@@ -84,14 +86,7 @@ export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
           {p.variants.length > 1 && (
             <div className="row" style={{ gap: 6, marginTop: 10 }}>
               {p.variants.map((v, idx) => (
-                <button 
-                  key={`${v.brand}-${v.variant}-${v.form}`} 
-                  type="button" 
-                  className="chip chip--soft" 
-                  aria-pressed={idx === variantIdx} 
-                  onClick={() => { setVariantIdx(idx); setSizeIdx(0); }}
-                  style={{ padding: '4px 10px', fontSize: 12 }}
-                >
+                <button key={`${v.brand}-${v.variant}-${v.form}`} type="button" className="chip chip--soft" aria-pressed={idx === variantIdx} onClick={() => { setVariantIdx(idx); setSizeIdx(0); }} style={{ padding: '4px 10px', fontSize: 12 }}>
                   {v.variant_label}
                 </button>
               ))}
@@ -109,9 +104,7 @@ export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
           <div className="row" style={{ marginTop: 12 }}>
             <div className="info info--violet tip" tabIndex={0}>
               <b>
-                {currentSize.from_unit_price < 1 
-                  ? `${inr(currentSize.from_unit_price * 100)}/100${currentSize.size_unit}` 
-                  : `${inr(currentSize.from_unit_price)}/${currentSize.size_unit}`}
+                {currentSize.from_unit_price < 1 ? `${inr(currentSize.from_unit_price * 100)}/100${currentSize.size_unit}` : `${inr(currentSize.from_unit_price)}/${currentSize.size_unit}`}
               </b>
               <span>Unit price</span>
             </div>
@@ -120,12 +113,8 @@ export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
       </div>
 
       <div>
-        <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.035em' }}>
-          {inr(activeStore.price)}
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 4 }}>
-          from {activeStore.name}
-        </div>
+        <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: '-0.035em' }}>{inr(activeStore.price)}</div>
+        <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 4 }}>from {activeStore.name}</div>
       </div>
 
       <div>
@@ -135,22 +124,17 @@ export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
         <div className="row gcard__stores" style={{ flexWrap: 'nowrap', alignItems: 'stretch' }}>
           {dynamicStores.slice(0, 4).map((s, i) => {
             const brand = getStoreBrand(s.name);
-            const isSelected = activeStore.name === s.name;
+            const isSelected = selectedStoreIndex === i;
             return (
               <div 
-                key={s.name + i} 
+                key={s.url + i} 
                 className={`store tip ${isSelected ? 'store--selected' : ''}`} 
-                onClick={() => setSelectedStoreName(s.name)}
+                onClick={() => setSelectedStoreIndex(i)}
                 style={{
-                  cursor: 'pointer',
-                  border: isSelected ? '2px solid var(--violet)' : '1px solid transparent',
-                  background: isSelected ? 'var(--violet-light)' : undefined
+                  cursor: 'pointer', border: isSelected ? '2px solid var(--violet)' : '1px solid transparent', background: isSelected ? 'var(--violet-light)' : undefined
                 }}
               >
-                <div className="row" style={{ gap: 4, justifyContent: 'center', flexWrap: 'nowrap' }}>
-                  <span className="store__logo" style={{ background: brand.bg }}>{brand.logo}</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 500, color: '#55504A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
-                </div>
+                <div className="row" style={{ gap: 4, justifyContent: 'center', flexWrap: 'nowrap' }}><span className="store__logo" style={{ background: brand.bg }}>{brand.logo}</span><span style={{ fontSize: 10.5, fontWeight: 500, color: '#55504A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span></div>
                 <div className="store__price" style={!s.inStock ? { textDecoration: 'line-through', color: 'var(--faint)' } : {}}>{inr(s.price)}</div>
               </div>
             );
@@ -159,22 +143,8 @@ export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        <button 
-          onClick={handleAddToCart} 
-          className="btn btn--secondary" 
-          style={{ flex: 1, padding: '10px 0', fontSize: 13, background: '#F3F0FE', color: 'var(--violet)' }}
-        >
-          Add to Cart
-        </button>
-        <a 
-          href={activeStore.url || '#'} 
-          target="_blank" 
-          rel="noreferrer" 
-          className="btn btn--primary" 
-          style={{ flex: 1, padding: '10px 0', fontSize: 13, textDecoration: 'none' }}
-        >
-          Buy Now
-        </a>
+        <button onClick={handleAddToCart} className="btn btn--secondary" style={{ flex: 1, padding: '10px 0', fontSize: 13, background: '#F3F0FE', color: 'var(--violet)' }}>Add to Cart</button>
+        <a href={activeStore.url || '#'} target="_blank" rel="noreferrer" className="btn btn--primary" style={{ flex: 1, padding: '10px 0', fontSize: 13, textDecoration: 'none' }}>Buy Now</a>
       </div>
     </article>
   );

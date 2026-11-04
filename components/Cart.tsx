@@ -4,13 +4,14 @@ import { createContext, useContext, useState, useMemo, useEffect, ReactNode } fr
 import { inr } from '@/utils/format';
 
 export type CartItem = {
-  id: string;
+  id: string; 
   title: string;
   variantLabel: string;
   sizeLabel: string;
   price: number;
   storeName: string;
-  storeUrl: string;
+  storeUrl: string; 
+  listingTitle: string; 
   imageUrl: string;
   qty: number;
 };
@@ -77,6 +78,32 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
 function CartDrawer() {
   const { items, isCartOpen, setCartOpen, updateQty, removeFromCart } = useCart();
+  
+  const [isClosing, setIsClosing] = useState(false);
+  const [renderOpen, setRenderOpen] = useState(false);
+  const [itemToRemove, setItemToRemove] = useState<string | null>(null); 
+
+  useEffect(() => {
+    if (isCartOpen) {
+      setRenderOpen(true);
+      setIsClosing(false);
+    } else if (renderOpen) {
+      setIsClosing(true);
+      const timer = setTimeout(() => {
+        setRenderOpen(false);
+        setIsClosing(false);
+      }, 300); 
+      return () => clearTimeout(timer);
+    }
+  }, [isCartOpen, renderOpen]);
+
+  const handleMinus = (item: CartItem) => {
+    if (item.qty === 1) {
+      setItemToRemove(item.id); 
+    } else {
+      updateQty(item.id, -1);
+    }
+  };
 
   const groupedCart = useMemo(() => {
     const groups: Record<string, { items: CartItem[], total: number }> = {};
@@ -88,30 +115,48 @@ function CartDrawer() {
     return groups;
   }, [items]);
 
-  if (!isCartOpen) return null;
+  if (!renderOpen) return null;
 
   return (
     <>
       <style>{`
         @keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+        @keyframes slideOut { from { transform: translateX(0); } to { transform: translateX(100%); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
       `}</style>
+      
       <div 
-        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 9998, animation: 'fadeIn 0.2s ease-out' }} 
+        style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 9998, animation: isClosing ? 'fadeOut 0.3s forwards' : 'fadeIn 0.3s forwards' }} 
         onClick={() => setCartOpen(false)} 
       />
+      
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0, width: '100%', maxWidth: 400,
         backgroundColor: '#fff', zIndex: 9999, display: 'flex', flexDirection: 'column',
         boxShadow: '-4px 0 24px rgba(0,0,0,0.1)', overflow: 'hidden',
-        animation: 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+        animation: isClosing ? 'slideOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' : 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
       }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontSize: 20, margin: 0, fontWeight: 700 }}>Your Basket</h2>
           <button onClick={() => setCartOpen(false)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer' }}>×</button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24, position: 'relative' }}>
+          
+          {itemToRemove && (
+            <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(255,255,255,0.85)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ padding: 24, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.1)', textAlign: 'center', maxWidth: 300, border: '1px solid var(--divider)' }}>
+                <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>Remove item?</h3>
+                <p style={{ margin: '0 0 20px', fontSize: 13.5, color: 'var(--faint)' }}>Do you want to drop this item from your basket?</p>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => setItemToRemove(null)} style={{ flex: 1, padding: '10px 0', border: '1px solid var(--divider)', borderRadius: 8, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Keep</button>
+                  <button onClick={() => { removeFromCart(itemToRemove); setItemToRemove(null); }} style={{ flex: 1, padding: '10px 0', border: 'none', borderRadius: 8, background: 'var(--red, #E22028)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Remove</button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {items.length === 0 ? (
             <div style={{ textAlign: 'center', color: 'var(--faint)', marginTop: 40 }}>Your cart is empty.</div>
           ) : (
@@ -132,11 +177,10 @@ function CartDrawer() {
                         <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 4 }}>{inr(item.price)}</div>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--divider)', borderRadius: 8, overflow: 'hidden' }}>
-                        <button onClick={() => updateQty(item.id, -1)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }}>-</button>
+                        <button onClick={() => handleMinus(item)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }}>-</button>
                         <span style={{ fontSize: 13, width: 20, textAlign: 'center', fontWeight: 600 }}>{item.qty}</span>
                         <button onClick={() => updateQty(item.id, 1)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }}>+</button>
                       </div>
-                      <button onClick={() => removeFromCart(item.id)} style={{ padding: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'red' }}>🗑</button>
                     </div>
                   ))}
                 </div>
