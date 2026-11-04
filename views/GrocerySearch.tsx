@@ -236,16 +236,38 @@ export default function GrocerySearch({
 
       {modal === 'summary' && (
         <Modal title="List Processed" subtitle="Here is what we added to your basket." onClose={() => setModal(null)}>
-          <div style={{ display: 'grid', gap: 10, maxHeight: 300, overflowY: 'auto', paddingRight: 8 }}>
-            {listSummary.map((item, idx) => (
-              <div key={idx} style={{ padding: 12, border: '1px solid var(--divider)', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: item.status === 'miss' ? '#FFF5F5' : '#fff' }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>{item.line}</div>
-                  <div style={{ fontSize: 12, color: item.status === 'miss' ? 'var(--red)' : 'var(--faint)', marginTop: 4 }}>{item.msg}</div>
+          <div style={{ display: 'grid', gap: 10, maxHeight: 350, overflowY: 'auto', paddingRight: 8 }}>
+            {listSummary.map((item, idx) => {
+              let bg = '#fff';
+              let borderColor = 'var(--divider)';
+              let icon = <CheckIcon size={18} color="var(--green)" />;
+              
+              if (item.status === 'miss') {
+                bg = '#FFF5F5';
+                borderColor = '#FEB2B2';
+                icon = <span style={{ fontSize: 16 }}>❌</span>;
+              } else if (item.status === 'auto-adjusted') {
+                bg = '#FFFAF0';
+                borderColor = '#FBD38D';
+                icon = <span style={{ fontSize: 16 }}>⚠️</span>;
+              }
+
+              return (
+                <div key={idx} style={{ padding: 12, border: `1px solid ${borderColor}`, borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: bg }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{item.line}</div>
+                    <div style={{ 
+                      fontSize: 12, 
+                      color: item.status === 'miss' ? 'var(--red)' : item.status === 'auto-adjusted' ? '#DD6B20' : 'var(--faint)', 
+                      marginTop: 4 
+                    }}>
+                      {item.msg}
+                    </div>
+                  </div>
+                  <div style={{ paddingLeft: 12 }}>{icon}</div>
                 </div>
-                {item.status !== 'miss' && <CheckIcon size={18} color="var(--green)" />}
-              </div>
-            ))}
+              );
+            })}
           </div>
           <button 
             onClick={() => { setModal(null); setCartOpen(true); }} 

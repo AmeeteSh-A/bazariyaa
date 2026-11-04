@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import SearchBar from '@/components/SearchBar';
 import { ClipIcon, ImageIcon, ListIcon, MicIcon, PinIcon } from '@/components/Icons';
 
-// Assuming you have a type like this in '@/types'
 export interface GroceryCategory {
   name: string;
   cat: string;
@@ -28,7 +27,7 @@ export default function Grocery({ initialCategories }: { initialCategories: Groc
         <div className="eyebrow">Grocery price comparison</div>
         <h1 className="h1" style={{ fontSize: 'clamp(30px, 4.4vw, 44px)', marginTop: 14 }}>Find the best grocery prices without checking every store.</h1>
         <p className="lead">Search an item, or drop your entire list — we compare it across Blinkit, Zepto, Instamart and more, and tell you exactly where it costs the least.</p>
-        <SearchBar placeholder="Search groceries, brands or products…" scope="grocery" variant="grocery" />
+        <SearchBar placeholder="Search groceries, brands or products…" variant="grocery" />
         <div className="list-actions">
           <span className="muted" style={{ fontWeight: 500 }}>Have a grocery list?</span>
           <button type="button" className="chip" onClick={toList}><ListIcon size={15} color="var(--violet)" />Type list</button>

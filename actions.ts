@@ -2,29 +2,56 @@
 
 import { serverSupabase } from '@/lib/supabaseServer';
 
+const UNIT_MAP: Record<string, 'g' | 'ml' | 'pc'> = {
+  kg: 'g', kilo: 'g', kilogram: 'g', kilograms: 'g', kgs: 'g',
+  g: 'g', gm: 'g', grm: 'g', gram: 'g', grams: 'g',
+  l: 'ml', lt: 'ml', ltr: 'ml', liter: 'ml', liters: 'ml', litre: 'ml',
+  ml: 'ml', mili: 'ml', milliliter: 'ml',
+  pc: 'pc', pcs: 'pc', piece: 'pc', pieces: 'pc', bunch: 'pc', box: 'pc', dozen: 'pc'
+};
+
 export async function processSmartList(listText: string) {
   const supabase = serverSupabase();
   if (!supabase) return { error: 'No database connection' };
 
   const lines = listText.split('\n').map(l => l.trim()).filter(Boolean);
   const itemsToAdd: any[] = [];
-  const summary: any[] = []; 
+  const summary: any[] = [];
+
+  const unitRegexStr = Object.keys(UNIT_MAP).join('|');
 
   for (const line of lines) {
     let searchQ = line;
     let targetQty = 1;
-    let targetUnit = 'pc';
+    let targetUnit: 'g' | 'ml' | 'pc' = 'pc';
 
-    const match = line.match(/(.*?)\s*((?:\d+(?:\.\d+)?)\s*(?:kg|g|l|ml|pc|pcs))$/i);
+    let match = line.match(new RegExp(`^(.*?)\\s+(?:-|of\\s)?\\s*((\\d+(?:\\.\\d+)?)\\s*(${unitRegexStr}))\\s*$`, 'i'));
     
     if (match) {
       searchQ = match[1].trim();
-      const qtyStr = match[2].toLowerCase();
-      if (qtyStr.includes('kg')) { targetQty = parseFloat(qtyStr) * 1000; targetUnit = 'g'; }
-      else if (qtyStr.includes('g')) { targetQty = parseFloat(qtyStr); targetUnit = 'g'; }
-      else if (qtyStr.includes('l')) { targetQty = parseFloat(qtyStr) * 1000; targetUnit = 'ml'; }
-      else if (qtyStr.includes('ml')) { targetQty = parseFloat(qtyStr); targetUnit = 'ml'; }
-      else { targetQty = parseFloat(qtyStr); targetUnit = 'pc'; }
+      let rawQty = parseFloat(match[3]);
+      let rawUnit = match[4].toLowerCase();
+      
+      targetUnit = UNIT_MAP[rawUnit];
+      if (['kg', 'kilo', 'kilogram', 'kilograms', 'kgs', 'l', 'lt', 'ltr', 'liter', 'liters', 'litre'].includes(rawUnit)) {
+        rawQty *= 1000;
+      }
+      if (rawUnit === 'dozen') rawQty *= 12;
+      targetQty = rawQty;
+    } else {
+      match = line.match(new RegExp(`^(\\d+(?:\\.\\d+)?)\\s*(${unitRegexStr})\\s+(?:of\\s)?(.*)$`, 'i'));
+      if (match) {
+        let rawQty = parseFloat(match[1]);
+        let rawUnit = match[2].toLowerCase();
+        searchQ = match[3].trim();
+        
+        targetUnit = UNIT_MAP[rawUnit];
+        if (['kg', 'kilo', 'kilogram', 'kilograms', 'kgs', 'l', 'lt', 'ltr', 'liter', 'liters', 'litre'].includes(rawUnit)) {
+          rawQty *= 1000;
+        }
+        if (rawUnit === 'dozen') rawQty *= 12;
+        targetQty = rawQty;
+      }
     }
 
     const { data } = await supabase.rpc('search_grocery', { search_q: searchQ });
@@ -34,7 +61,18 @@ export async function processSmartList(listText: string) {
       continue;
     }
 
-    const topProduct = data.sections[0];
+    const searchClean = searchQ.toLowerCase();
+    const bestMatch = data.sections.find((s: any) => {
+      const titleClean = s.title.toLowerCase();
+      return titleClean.includes(searchClean) || searchClean.includes(titleClean);
+    });
+
+    if (!bestMatch) {
+      summary.push({ line, status: 'miss', msg: `Not found (Did you mean ${data.sections[0].title}?)` });
+      continue;
+    }
+
+    const topProduct = bestMatch;
     const topVariant = topProduct.variants[0];
     
     if (!topVariant || !topVariant.sizes || topVariant.sizes.length === 0) {
@@ -42,32 +80,36 @@ export async function processSmartList(listText: string) {
       continue;
     }
 
-    const validSizes = topVariant.sizes
-      .filter((s: any) => {
-        let u = s.size_unit.toLowerCase();
-        if (u === 'kg') u = 'g';
-        if (u === 'l') u = 'ml';
-        return u === targetUnit || targetUnit === 'pc'; 
-      })
-      .map((s: any) => {
-        let val = s.size_value;
-        if (s.size_unit.toLowerCase() === 'kg') val *= 1000;
-        if (s.size_unit.toLowerCase() === 'l') val *= 1000;
-        return { ...s, normalizedVal: val };
-      })
-      .sort((a: any, b: any) => b.normalizedVal - a.normalizedVal);
+    const normalizedDbSizes = topVariant.sizes.map((s: any) => {
+      let u = s.size_unit.toLowerCase();
+      let val = s.size_value;
+      let mappedUnit = UNIT_MAP[u] || 'pc';
+      
+      if (['kg', 'l'].includes(u)) val *= 1000;
+      return { ...s, normalizedVal: val, mappedUnit };
+    });
+
+    let validSizes = normalizedDbSizes.filter((s: any) => s.mappedUnit === targetUnit);
+    let status = 'success';
+    let msg = 'Added perfectly';
 
     if (validSizes.length === 0) {
-      summary.push({ line, status: 'miss', msg: `No ${targetUnit} sizes available` });
-      continue;
+      validSizes = normalizedDbSizes; 
+      targetQty = 1; 
+      status = 'auto-adjusted';
+      msg = `Unit mismatch. Added 1 ${validSizes[0].sizeKey} instead.`;
     }
 
+    validSizes.sort((a: any, b: any) => b.normalizedVal - a.normalizedVal);
     const smallestAvailable = validSizes[validSizes.length - 1];
     const selectedSizes = [];
 
     if (targetQty <= smallestAvailable.normalizedVal) {
       selectedSizes.push(smallestAvailable);
-      summary.push({ line, status: 'auto-adjusted', msg: `Substituted with ${smallestAvailable.sizeKey}` });
+      if (targetQty < smallestAvailable.normalizedVal) {
+        status = 'auto-adjusted';
+        msg = `Substituted with smallest available (${smallestAvailable.sizeKey})`;
+      }
     } else {
       let remaining = targetQty;
       for (const size of validSizes) {
@@ -78,8 +120,9 @@ export async function processSmartList(listText: string) {
       }
       if (remaining > 0) {
         selectedSizes.push(smallestAvailable);
+        status = 'auto-adjusted';
+        msg = `Combined sizes to approximate requested quantity.`;
       }
-      summary.push({ line, status: 'success', msg: 'Added perfectly' });
     }
 
     selectedSizes.forEach(size => {
@@ -99,6 +142,12 @@ export async function processSmartList(listText: string) {
         qty: 1
       });
     });
+
+    if (status === 'success') {
+      summary.push({ line, status: 'success', msg: 'Added perfectly' });
+    } else {
+      summary.push({ line, status: 'auto-adjusted', msg });
+    }
   }
 
   return { items: itemsToAdd, summary };
