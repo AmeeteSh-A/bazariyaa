@@ -224,7 +224,13 @@ export default function GrocerySearch({
       {modal === 'type' && (
         <Modal title="Type or paste your grocery list" subtitle="One item per line — quantities optional." onClose={() => setModal(null)}>
           <label className="visually-hidden" htmlFor="glist">Grocery list</label>
-          <textarea id="glist" value={text} onChange={e => setText(e.target.value)} placeholder={SAMPLE_LIST} />
+          <textarea 
+            id="glist" 
+            value={text} 
+            onChange={e => setText(e.target.value)} 
+            placeholder={SAMPLE_LIST} 
+            style={{ width: '100%', height: '40vh', minHeight: 150, padding: 16, borderRadius: 12, border: '1px solid var(--divider)', resize: 'none', fontSize: 14, fontFamily: 'inherit' }}
+          />
           <div className="row" style={{ marginTop: 16, justifyContent: 'space-between' }}>
             <button type="button" className="chip chip--soft" aria-pressed="true" onClick={() => setText(SAMPLE_LIST)}>Use a sample list</button>
             <button type="button" className="btn btn--primary" onClick={() => submitList(text)} disabled={isProcessingList}>
@@ -236,35 +242,82 @@ export default function GrocerySearch({
 
       {modal === 'summary' && (
         <Modal title="List Processed" subtitle="Here is what we added to your basket." onClose={() => setModal(null)}>
-          <div style={{ display: 'grid', gap: 10, maxHeight: 350, overflowY: 'auto', paddingRight: 8 }}>
+          <div style={{ display: 'grid', gap: 10, maxHeight: '50vh', overflowY: 'auto', paddingRight: 8 }}>
             {listSummary.map((item, idx) => {
               let bg = '#fff';
               let borderColor = 'var(--divider)';
               let icon = <CheckIcon size={18} color="var(--green)" />;
+              let msgColor = 'var(--faint)';
               
-              if (item.status === 'miss') {
+              const isSuggestion = item.suggestedItems && item.suggestedItems.length > 0;
+
+              if (isSuggestion) {
+                bg = '#FFF8EB'; 
+                borderColor = '#f1f164'; 
+                icon = <span style={{ fontSize: 16 }}>🤔</span>; 
+                msgColor = '#9fa11c'; 
+              } else if (item.status === 'miss') {
                 bg = '#FFF5F5';
                 borderColor = '#FEB2B2';
                 icon = <span style={{ fontSize: 16 }}>❌</span>;
+                msgColor = 'var(--red)';
               } else if (item.status === 'auto-adjusted') {
                 bg = '#FFFAF0';
                 borderColor = '#FBD38D';
                 icon = <span style={{ fontSize: 16 }}>⚠️</span>;
+                msgColor = '#DD6B20';
               }
 
               return (
-                <div key={idx} style={{ padding: 12, border: `1px solid ${borderColor}`, borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: bg }}>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13.5 }}>{item.line}</div>
-                    <div style={{ 
-                      fontSize: 12, 
-                      color: item.status === 'miss' ? 'var(--red)' : item.status === 'auto-adjusted' ? '#DD6B20' : 'var(--faint)', 
-                      marginTop: 4 
-                    }}>
-                      {item.msg}
+                <div key={idx} style={{ padding: 12, border: `1px solid ${borderColor}`, borderRadius: 8, background: bg, transition: 'all 0.2s ease' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13.5 }}>{item.line}</div>
+                      <div style={{ fontSize: 12, color: msgColor, marginTop: 4 }}>
+                        {item.msg}
+                      </div>
                     </div>
+                    <div style={{ paddingLeft: 12 }}>{icon}</div>
                   </div>
-                  <div style={{ paddingLeft: 12 }}>{icon}</div>
+
+                  {isSuggestion && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${borderColor}`, display: 'flex', gap: 8 }}>
+                      <button 
+                        onClick={() => {
+                          
+                          item.suggestedItems.forEach((i: any) => addToCart(i));
+                          
+                          const newSummary = [...listSummary];
+                          newSummary[idx] = { ...item, status: 'success', msg: 'Suggestion added perfectly.', suggestedItems: null };
+                          setListSummary(newSummary);
+                        }} 
+                        style={{ flex: 1, padding: '8px 0', background: 'var(--violet)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        Yes, add it
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const newSummary = [...listSummary];
+                          newSummary[idx] = { ...item, status: 'miss', msg: 'Item ignored.', suggestedItems: null };
+                          setListSummary(newSummary);
+                        }} 
+                        style={{ 
+                          flex: 1, 
+                          padding: '8px 0', 
+                          background: 'transparent', 
+                          color: 'var(--red, #E22028)', 
+                          border: '1px solid var(--red, #E22028)', 
+                          borderRadius: 8, 
+                          fontSize: 12, 
+                          fontWeight: 600, 
+                          cursor: 'pointer' 
+                        }}
+                      >
+                        No
+                      </button>
+                    </div>
+                  )}
+
                 </div>
               );
             })}

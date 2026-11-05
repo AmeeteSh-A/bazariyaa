@@ -68,7 +68,35 @@ export async function processSmartList(listText: string) {
     });
 
     if (!bestMatch) {
-      summary.push({ line, status: 'miss', msg: `Not found (Did you mean ${data.sections[0].title}?)` });
+      const suggestedProduct = data.sections[0];
+      const suggestedVariant = suggestedProduct.variants[0];
+      const suggestedItemsToAdd: any[] = [];
+
+      if (suggestedVariant && suggestedVariant.sizes && suggestedVariant.sizes.length > 0) {
+        const s = suggestedVariant.sizes[0]; 
+        const bestStore = s.stores[0];
+        if (bestStore) {
+          suggestedItemsToAdd.push({
+            id: `${suggestedProduct.key}-${suggestedVariant.variant_label}-${s.sizeKey}-${bestStore.name}-${bestStore.price}`,
+            title: suggestedProduct.title,
+            variantLabel: suggestedVariant.variant_label,
+            sizeLabel: s.sizeKey,
+            price: bestStore.price,
+            storeName: bestStore.name,
+            storeUrl: bestStore.url,
+            listingTitle: bestStore.listing_title,
+            imageUrl: bestStore.image_url || suggestedProduct.image_url,
+            qty: 1
+          });
+        }
+      }
+
+      summary.push({ 
+        line, 
+        status: 'miss', 
+        msg: `Not found (Did you mean ${data.sections[0].title}?)`,
+        suggestedItems: suggestedItemsToAdd // Pass to UI
+      });
       continue;
     }
 

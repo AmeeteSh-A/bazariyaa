@@ -21,6 +21,7 @@ interface CartContextType {
   addToCart: (item: Omit<CartItem, 'qty'>) => void;
   removeFromCart: (id: string) => void;
   updateQty: (id: string, delta: number) => void;
+  clearCart: () => void;
   isCartOpen: boolean;
   setCartOpen: (open: boolean) => void;
   totalItems: number;
@@ -65,11 +66,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
   };
 
   const removeFromCart = (id: string) => setItems(prev => prev.filter(i => i.id !== id));
+  
+  const clearCart = () => setItems([]);
 
   const totalItems = items.reduce((acc, item) => acc + item.qty, 0);
 
   return (
-    <CartContext.Provider value={{ items, addToCart, removeFromCart, updateQty, isCartOpen, setCartOpen, totalItems }}>
+    <CartContext.Provider value={{ items, addToCart, removeFromCart, updateQty, clearCart, isCartOpen, setCartOpen, totalItems }}>
       {children}
       <CartDrawer />
     </CartContext.Provider>
@@ -77,11 +80,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
 }
 
 function CartDrawer() {
-  const { items, isCartOpen, setCartOpen, updateQty, removeFromCart } = useCart();
+  const { items, isCartOpen, setCartOpen, updateQty, removeFromCart, clearCart } = useCart();
   
   const [isClosing, setIsClosing] = useState(false);
   const [renderOpen, setRenderOpen] = useState(false);
+  
   const [itemToRemove, setItemToRemove] = useState<string | null>(null); 
+  const [isClearingCart, setIsClearingCart] = useState(false);
 
   useEffect(() => {
     if (isCartOpen) {
@@ -139,7 +144,18 @@ function CartDrawer() {
       }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontSize: 20, margin: 0, fontWeight: 700 }}>Your Basket</h2>
-          <button onClick={() => setCartOpen(false)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer' }}>×</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            {items.length > 0 && (
+              <button 
+                onClick={() => setIsClearingCart(true)} 
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red, #E22028)', fontSize: 16, display: 'flex', alignItems: 'center', padding: 4 }}
+                title="Clear Cart"
+              >
+                🗑
+              </button>
+            )}
+            <button onClick={() => setCartOpen(false)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', padding: 0 }}>×</button>
+          </div>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto', padding: 24, position: 'relative' }}>
@@ -152,6 +168,19 @@ function CartDrawer() {
                 <div style={{ display: 'flex', gap: 10 }}>
                   <button onClick={() => setItemToRemove(null)} style={{ flex: 1, padding: '10px 0', border: '1px solid var(--divider)', borderRadius: 8, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Keep</button>
                   <button onClick={() => { removeFromCart(itemToRemove); setItemToRemove(null); }} style={{ flex: 1, padding: '10px 0', border: 'none', borderRadius: 8, background: 'var(--red, #E22028)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Remove</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isClearingCart && (
+            <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(255,255,255,0.85)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ padding: 24, background: '#fff', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.1)', textAlign: 'center', maxWidth: 300, border: '1px solid var(--divider)' }}>
+                <h3 style={{ margin: '0 0 8px', fontSize: 16 }}>Clear entire cart?</h3>
+                <p style={{ margin: '0 0 20px', fontSize: 13.5, color: 'var(--faint)' }}>This will remove all items from your basket.</p>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button onClick={() => setIsClearingCart(false)} style={{ flex: 1, padding: '10px 0', border: '1px solid var(--divider)', borderRadius: 8, background: '#fff', cursor: 'pointer', fontWeight: 600 }}>Cancel</button>
+                  <button onClick={() => { clearCart(); setIsClearingCart(false); }} style={{ flex: 1, padding: '10px 0', border: 'none', borderRadius: 8, background: 'var(--red, #E22028)', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Clear All</button>
                 </div>
               </div>
             </div>

@@ -1,28 +1,42 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
-import { CloseIcon } from './Icons';
+import { ReactNode, useEffect } from 'react';
 
 export function Modal({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: ReactNode }) {
   useEffect(() => {
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', k);
     document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', k); document.body.style.overflow = ''; };
-  }, [onClose]);
+    return () => { document.body.style.overflow = 'unset'; };
+  }, []);
+
   return (
-    <>
-      <div className="modal-scrim" onClick={onClose} />
-      <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'nowrap' }}>
+    <div style={{ 
+      position: 'fixed', inset: 0, zIndex: 10000, 
+      display: 'flex', alignItems: 'center', justifyContent: 'center', 
+      padding: '16px' 
+    }}>
+      <div 
+        style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)' }} 
+        onClick={onClose} 
+      />
+      
+      <div style={{ 
+        position: 'relative', background: '#fff', borderRadius: 16, 
+        width: '100%', maxWidth: 480, maxHeight: '90vh', 
+        display: 'flex', flexDirection: 'column', 
+        boxShadow: '0 12px 48px rgba(0,0,0,0.2)'
+      }}>
+        <div style={{ padding: '24px 24px 16px', borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <h3 className="h3">{title}</h3>
-            {subtitle && <p className="sub">{subtitle}</p>}
+            <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 700 }}>{title}</h2>
+            {subtitle && <p style={{ margin: 0, fontSize: 14, color: 'var(--faint)' }}>{subtitle}</p>}
           </div>
-          <button type="button" className="icon-btn" aria-label="Close" onClick={onClose}><CloseIcon size={16} /></button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 28, cursor: 'pointer', padding: 0, lineHeight: 1, color: 'var(--faint)' }}>&times;</button>
         </div>
-        {children}
+        
+        <div style={{ padding: 24, overflowY: 'auto' }}>
+          {children}
+        </div>
       </div>
-    </>
+    </div>
   );
 }
