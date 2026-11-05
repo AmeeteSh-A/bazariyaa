@@ -95,7 +95,7 @@ export async function processSmartList(listText: string) {
         line, 
         status: 'miss', 
         msg: `Not found (Did you mean ${data.sections[0].title}?)`,
-        suggestedItems: suggestedItemsToAdd // Pass to UI
+        suggestedItems: suggestedItemsToAdd 
       });
       continue;
     }
@@ -179,4 +179,51 @@ export async function processSmartList(listText: string) {
   }
 
   return { items: itemsToAdd, summary };
+}
+
+export async function extractTextFromImage(base64Image: string) {
+  try {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) return { error: "Missing GROQ_API_KEY in environment." };
+
+    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "llama-3.2-11b-vision-preview",
+        messages: [
+          {
+            role: "user",
+            content: [
+              { 
+                type: "text", 
+                text: "Extract the grocery list from this image. Return ONLY the items and their quantities, one per line. Do not include introductory text, markdown formatting, bullet points, or numbers at the start of the lines." 
+              },
+              { 
+                type: "image_url", 
+                image_url: { url: base64Image } 
+              }
+            ]
+          }
+        ],
+        temperature: 0.1, 
+        max_tokens: 512
+      })
+    });
+
+    if (!response.ok) {
+      console.error("Vision API Error:", await response.text());
+      return { error: "Failed to read the image. The image might be too complex or blurry." };
+    }
+
+    const data = await response.json();
+    return { text: data.choices[0].message.content.trim() };
+    
+  } catch (error: any) {
+    console.error("OCR Exception:", error);
+    return { error: "Network error while reading the image." };
+  }
 }

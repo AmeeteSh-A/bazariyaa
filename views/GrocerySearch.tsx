@@ -7,7 +7,7 @@ import { Modal } from '@/components/Modal';
 import { ChevronRight, ClipIcon, ImageIcon, ListIcon, PinIcon, UploadIcon, CheckIcon } from '@/components/Icons';
 import type { GroceryCategory } from '@/types';
 import { useCart } from '@/components/Cart';
-import { processSmartList } from '../actions';
+import { processSmartList, extractTextFromImage } from '../actions';
 
 type Sort = 'price' | 'unit' | 'discount';
 
@@ -34,11 +34,11 @@ export default function GrocerySearch({
   const [activeBrand, setActiveBrand] = useState('All');
   const [activeForm, setActiveForm] = useState('All');
   const [sort, setSort] = useState<Sort>('price');
-  
-  const [modal, setModal] = useState<'type' | 'image' | 'location' | 'summary' | null>(null);
+  const [modal, setModal] = useState<'list' | 'location' | 'summary' | null>(null);
   
   const [text, setText] = useState('');
   const [isProcessingList, setIsProcessingList] = useState(false);
+  const [isExtractingText, setIsExtractingText] = useState(false);
   const [listSummary, setListSummary] = useState<any[]>([]);
   const [address, setAddress] = useState('HSR Layout, Bengaluru 560102');
 
@@ -49,13 +49,8 @@ export default function GrocerySearch({
     setActiveBrand(params.get('brand') || 'All');
     setActiveForm(params.get('form') || 'All');
     setSort((params.get('sort') as Sort) || 'price');
-    setModal(params.get('list') ? 'type' : null);
+    setModal(params.get('list') ? 'list' : null);
   }, [params]);
-
-  const sections = searchResults?.sections || [];
-  const facets = searchResults?.facets || {};
-  const brands = facets.brand || [];
-  const forms = facets.form || [];
 
   useEffect(() => { 
     if (q) {
@@ -78,6 +73,13 @@ export default function GrocerySearch({
     updateUrl({ q: searchQuery.trim(), brand: null, form: null });
   };
 
+
+  const sections = searchResults?.sections || [];
+  const facets = searchResults?.facets || {};
+  const brands = facets.brand || [];
+  const forms = facets.form || [];
+
+
   const products = useMemo(() => {
     let l = [...sections];
     if (activeBrand !== 'All') l = l.filter(s => s.title.toLowerCase().includes(activeBrand.toLowerCase()));
@@ -92,11 +94,12 @@ export default function GrocerySearch({
         default: return aBest - bBest;
       }
     });
-  }, [sections, activeBrand, activeForm, sort]);
+  }, [searchResults?.sections, activeBrand, activeForm, sort]);
 
   const submitList = async (t: string) => { 
+    if (!t.trim()) return;
     setIsProcessingList(true);
-    const res = await processSmartList(t || SAMPLE_LIST);
+    const res = await processSmartList(t);
     
     if (res?.items) {
       res.items.forEach((item: any) => addToCart(item));
@@ -113,6 +116,46 @@ export default function GrocerySearch({
       setModal(null);
     }, 1200);
   };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("File too large. Please upload an image or text file smaller than 5MB.");
+      e.target.value = ''; 
+      return;
+    }
+
+    if (file.type === "text/plain") {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const content = ev.target?.result as string;
+        setText(prev => prev ? prev + '\n' + content : content);
+      };
+      reader.readAsText(file);
+    } else if (file.type.startsWith("image/")) {
+      setIsExtractingText(true);
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const base64 = ev.target?.result as string;
+        const res = await extractTextFromImage(base64);
+        if (res.text) {
+          setText(prev => prev ? prev + '\n' + res.text : res.text);
+        } else {
+          alert(res.error || "Failed to read the image.");
+        }
+        setIsExtractingText(false);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      alert("Invalid file type. Please upload a .txt or an image.");
+    }
+    
+    e.target.value = ''; 
+  };
+
+
 
   return (
     <div className="container container--wide">
@@ -138,11 +181,12 @@ export default function GrocerySearch({
             </form>
           </div>
           
-          <div className="row" style={{ marginTop: 16, fontSize: 13.5 }}>
+          <div className="row" style={{ marginTop: 16, fontSize: 20 }}>
             <span className="muted" style={{ fontWeight: 500 }}>Have a grocery list?</span>
-            <button type="button" className="chip" onClick={() => setModal('type')}><ListIcon size={15} color="var(--violet)" />Type list</button>
-            <button type="button" className="chip" onClick={() => setModal('image')}><ImageIcon size={15} color="var(--violet)" />Upload image</button>
-            <button type="button" className="chip" onClick={() => setModal('type')}><ClipIcon size={15} color="var(--violet)" />Paste list</button>
+            
+            <button type="button" className="chip" onClick={() => setModal('list')}><ListIcon size={18} color="var(--violet)" />Add List</button>
+            {/* <button type="button" className="chip" onClick={() => setModal('list')}><ImageIcon size={15} color="var(--violet)" />Upload image</button> */}
+            {/* <button type="button" className="chip" onClick={() => setModal('list')}><ClipIcon size={15} color="var(--violet)" />Paste list</button> */}
           </div>
         </div>
         <div className="gs-hero__banner"><img src="/assets/grocery/hero-banner.png" alt="Happy shopper next to Bazariyaa review badges" /></div>
@@ -221,20 +265,44 @@ export default function GrocerySearch({
         </Modal>
       )}
 
-      {modal === 'type' && (
-        <Modal title="Type or paste your grocery list" subtitle="One item per line — quantities optional." onClose={() => setModal(null)}>
+      {modal === 'list' && (
+        <Modal title="Smart Grocery List" subtitle="Type, paste, upload a .txt, or upload a photo of your list." onClose={() => setModal(null)}>
           <label className="visually-hidden" htmlFor="glist">Grocery list</label>
           <textarea 
             id="glist" 
             value={text} 
             onChange={e => setText(e.target.value)} 
-            placeholder={SAMPLE_LIST} 
-            style={{ width: '100%', height: '40vh', minHeight: 150, padding: 16, borderRadius: 12, border: '1px solid var(--divider)', resize: 'none', fontSize: 14, fontFamily: 'inherit' }}
+            disabled={isProcessingList || isExtractingText}
+            placeholder={isExtractingText ? 'Scanning image...' : SAMPLE_LIST} 
+            style={{ 
+              width: '100%', height: '40vh', minHeight: 150, padding: 16, 
+              borderRadius: 12, border: '1px solid var(--divider)', 
+              resize: 'none', fontSize: 14, fontFamily: 'inherit',
+              background: isExtractingText ? '#F9F9F9' : '#fff',
+              color: isExtractingText ? 'var(--faint)' : 'inherit'
+            }} 
           />
-          <div className="row" style={{ marginTop: 16, justifyContent: 'space-between' }}>
-            <button type="button" className="chip chip--soft" aria-pressed="true" onClick={() => setText(SAMPLE_LIST)}>Use a sample list</button>
-            <button type="button" className="btn btn--primary" onClick={() => submitList(text)} disabled={isProcessingList}>
-              {isProcessingList ? 'Calculating math...' : 'Find best prices →'}
+          
+          <div className="row" style={{ marginTop: 12, gap: 8, flexWrap: 'wrap' }}>
+            <label className="chip chip--dashed" style={{ cursor: 'pointer', margin: 0 }}>
+              <UploadIcon size={14} />
+              {isExtractingText ? 'Reading...' : 'Upload Image / .txt'}
+              <input type="file" accept="image/*,.txt" onChange={handleFileUpload} style={{ display: 'none' }} disabled={isExtractingText || isProcessingList} />
+            </label>
+            <button type="button" className="chip chip--soft" onClick={() => setText(SAMPLE_LIST)} disabled={isExtractingText || isProcessingList}>
+              Load Sample
+            </button>
+          </div>
+
+          <div style={{ marginTop: 16 }}>
+            <button 
+              type="button" 
+              className="btn btn--primary btn--block" 
+              onClick={() => submitList(text)} 
+              disabled={isProcessingList || isExtractingText || !text.trim()}
+              style={{ borderRadius: 12, padding: '14px' }}
+            >
+              {isProcessingList ? 'Calculating math & best prices...' : 'Find best prices →'}
             </button>
           </div>
         </Modal>
@@ -252,20 +320,11 @@ export default function GrocerySearch({
               const isSuggestion = item.suggestedItems && item.suggestedItems.length > 0;
 
               if (isSuggestion) {
-                bg = '#FFF8EB'; 
-                borderColor = '#f1f164'; 
-                icon = <span style={{ fontSize: 16 }}>🤔</span>; 
-                msgColor = '#9fa11c'; 
+                bg = '#FFF8EB'; borderColor = '#F6AD55'; icon = <span style={{ fontSize: 16 }}>🤔</span>; msgColor = '#DD6B20';
               } else if (item.status === 'miss') {
-                bg = '#FFF5F5';
-                borderColor = '#FEB2B2';
-                icon = <span style={{ fontSize: 16 }}>❌</span>;
-                msgColor = 'var(--red)';
+                bg = '#FFF5F5'; borderColor = '#FEB2B2'; icon = <span style={{ fontSize: 16 }}>❌</span>; msgColor = 'var(--red)';
               } else if (item.status === 'auto-adjusted') {
-                bg = '#FFFAF0';
-                borderColor = '#FBD38D';
-                icon = <span style={{ fontSize: 16 }}>⚠️</span>;
-                msgColor = '#DD6B20';
+                bg = '#FFFAF0'; borderColor = '#FBD38D'; icon = <span style={{ fontSize: 16 }}>⚠️</span>; msgColor = '#DD6B20';
               }
 
               return (
@@ -273,9 +332,7 @@ export default function GrocerySearch({
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 13.5 }}>{item.line}</div>
-                      <div style={{ fontSize: 12, color: msgColor, marginTop: 4 }}>
-                        {item.msg}
-                      </div>
+                      <div style={{ fontSize: 12, color: msgColor, marginTop: 4 }}>{item.msg}</div>
                     </div>
                     <div style={{ paddingLeft: 12 }}>{icon}</div>
                   </div>
@@ -284,9 +341,7 @@ export default function GrocerySearch({
                     <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${borderColor}`, display: 'flex', gap: 8 }}>
                       <button 
                         onClick={() => {
-                          
                           item.suggestedItems.forEach((i: any) => addToCart(i));
-                          
                           const newSummary = [...listSummary];
                           newSummary[idx] = { ...item, status: 'success', msg: 'Suggestion added perfectly.', suggestedItems: null };
                           setListSummary(newSummary);
@@ -301,44 +356,19 @@ export default function GrocerySearch({
                           newSummary[idx] = { ...item, status: 'miss', msg: 'Item ignored.', suggestedItems: null };
                           setListSummary(newSummary);
                         }} 
-                        style={{ 
-                          flex: 1, 
-                          padding: '8px 0', 
-                          background: 'transparent', 
-                          color: 'var(--red, #E22028)', 
-                          border: '1px solid var(--red, #E22028)', 
-                          borderRadius: 8, 
-                          fontSize: 12, 
-                          fontWeight: 600, 
-                          cursor: 'pointer' 
-                        }}
+                        style={{ flex: 1, padding: '8px 0', background: 'transparent', color: 'var(--red, #E22028)', border: '1px solid var(--red, #E22028)', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                       >
                         No
                       </button>
                     </div>
                   )}
-
                 </div>
               );
             })}
           </div>
-          <button 
-            onClick={() => { setModal(null); setCartOpen(true); }} 
-            className="btn btn--primary btn--block" 
-            style={{ marginTop: 16, padding: '12px', borderRadius: 12 }}
-          >
+          <button onClick={() => { setModal(null); setCartOpen(true); }} className="btn btn--primary btn--block" style={{ marginTop: 16, padding: '12px', borderRadius: 12 }}>
             View Cart
           </button>
-        </Modal>
-      )}
-
-      {modal === 'image' && (
-        <Modal title="Upload a grocery list" subtitle="A photo, screenshot or handwritten list — we'll read the items." onClose={() => setModal(null)}>
-          <label className="dropzone">
-            <input type="file" accept="image/*" className="visually-hidden" onChange={() => submitList(SAMPLE_LIST)} disabled={isProcessingList} />
-            <span className="icon-btn icon-btn--on" style={{ width: 52, height: 52 }}><UploadIcon /></span>
-            <b>{isProcessingList ? 'Processing image...' : 'Drag & drop, or click to upload'}</b><span className="faint" style={{ fontSize: 12.5 }}>PNG, JPG or a WhatsApp screenshot</span>
-          </label>
         </Modal>
       )}
 
