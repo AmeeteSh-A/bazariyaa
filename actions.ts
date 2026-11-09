@@ -7,7 +7,8 @@ const UNIT_MAP: Record<string, 'g' | 'ml' | 'pc'> = {
   g: 'g', gm: 'g', grm: 'g', gram: 'g', grams: 'g',
   l: 'ml', lt: 'ml', ltr: 'ml', liter: 'ml', liters: 'ml', litre: 'ml',
   ml: 'ml', mili: 'ml', milliliter: 'ml',
-  pc: 'pc', pcs: 'pc', piece: 'pc', pieces: 'pc', bunch: 'pc', box: 'pc', dozen: 'pc'
+  pc: 'pc', pcs: 'pc', piece: 'pc', pieces: 'pc', bunch: 'pc', box: 'pc', dozen: 'pc',
+  packet: 'pc', pkt: 'pc', pouch: 'pc', bottle: 'pc', btl: 'pc', tin: 'pc', can: 'pc'
 };
 
 export async function processSmartList(listText: string) {
@@ -17,10 +18,9 @@ export async function processSmartList(listText: string) {
   const lines = listText.split('\n').map(l => l.trim()).filter(Boolean);
   const itemsToAdd: any[] = [];
   const summary: any[] = [];
-
   const unitRegexStr = Object.keys(UNIT_MAP).join('|');
 
-  for (const line of lines) {
+  const processLine = async (line: string) => {
     let searchQ = line;
     let targetQty = 1;
     let targetUnit: 'g' | 'ml' | 'pc' = 'pc';
@@ -57,8 +57,7 @@ export async function processSmartList(listText: string) {
     const { data } = await supabase.rpc('search_grocery', { search_q: searchQ });
     
     if (!data || !data.sections || data.sections.length === 0) {
-      summary.push({ line, status: 'miss', msg: 'Item not found in any store' });
-      continue;
+      return { items: [], summaryItem: { line, status: 'miss', msg: 'Item not found in any store' } };
     }
 
     const searchClean = searchQ.toLowerCase();
@@ -73,7 +72,7 @@ export async function processSmartList(listText: string) {
       const suggestedItemsToAdd: any[] = [];
 
       if (suggestedVariant && suggestedVariant.sizes && suggestedVariant.sizes.length > 0) {
-        const s = suggestedVariant.sizes[0]; 
+        const s = suggestedVariant.sizes[0];
         const bestStore = s.stores[0];
         if (bestStore) {
           suggestedItemsToAdd.push({
@@ -91,21 +90,22 @@ export async function processSmartList(listText: string) {
         }
       }
 
-      summary.push({ 
-        line, 
-        status: 'miss', 
-        msg: `Not found (Did you mean ${data.sections[0].title}?)`,
-        suggestedItems: suggestedItemsToAdd 
-      });
-      continue;
+      return {
+        items: [],
+        summaryItem: {
+          line,
+          status: 'miss',
+          msg: `Not found (Did you mean ${data.sections[0].title}?)`,
+          suggestedItems: suggestedItemsToAdd
+        }
+      };
     }
 
     const topProduct = bestMatch;
     const topVariant = topProduct.variants[0];
     
     if (!topVariant || !topVariant.sizes || topVariant.sizes.length === 0) {
-      summary.push({ line, status: 'miss', msg: 'Out of stock everywhere' });
-      continue;
+      return { items: [], summaryItem: { line, status: 'miss', msg: 'Out of stock everywhere' } };
     }
 
     const normalizedDbSizes = topVariant.sizes.map((s: any) => {
@@ -122,8 +122,8 @@ export async function processSmartList(listText: string) {
     let msg = 'Added perfectly';
 
     if (validSizes.length === 0) {
-      validSizes = normalizedDbSizes; 
-      targetQty = 1; 
+      validSizes = normalizedDbSizes;
+      targetQty = 1;
       status = 'auto-adjusted';
       msg = `Unit mismatch. Added 1 ${validSizes[0].sizeKey} instead.`;
     }
@@ -153,11 +153,12 @@ export async function processSmartList(listText: string) {
       }
     }
 
+    const lineItemsToAdd: any[] = [];
     selectedSizes.forEach(size => {
       const bestStore = size.stores[0];
       if (!bestStore) return;
       
-      itemsToAdd.push({
+      lineItemsToAdd.push({
         id: `${topProduct.key}-${topVariant.variant_label}-${size.sizeKey}-${bestStore.name}-${bestStore.price}`,
         title: topProduct.title,
         variantLabel: topVariant.variant_label,
@@ -171,12 +172,18 @@ export async function processSmartList(listText: string) {
       });
     });
 
-    if (status === 'success') {
-      summary.push({ line, status: 'success', msg: 'Added perfectly' });
-    } else {
-      summary.push({ line, status: 'auto-adjusted', msg });
-    }
-  }
+    return {
+      items: lineItemsToAdd,
+      summaryItem: { line, status, msg }
+    };
+  };
+
+  const results = await Promise.all(lines.map(line => processLine(line)));
+
+  results.forEach(res => {
+    if (res.items.length > 0) itemsToAdd.push(...res.items);
+    summary.push(res.summaryItem);
+  });
 
   return { items: itemsToAdd, summary };
 }
