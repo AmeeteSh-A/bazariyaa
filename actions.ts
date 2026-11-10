@@ -1,6 +1,7 @@
 'use server';
 
 import { serverSupabase } from '@/lib/supabaseServer';
+import { formatNormalizedUnit } from '@/utils/format';
 
 const UNIT_MAP: Record<string, 'g' | 'ml' | 'pc'> = {
   kg: 'g', kilo: 'g', kilogram: 'g', kilograms: 'g', kgs: 'g',
@@ -79,7 +80,7 @@ export async function processSmartList(listText: string) {
             id: `${suggestedProduct.key}-${suggestedVariant.variant_label}-${s.sizeKey}-${bestStore.name}-${bestStore.price}`,
             title: suggestedProduct.title,
             variantLabel: suggestedVariant.variant_label,
-            sizeLabel: s.sizeKey,
+            sizeLabel: formatNormalizedUnit(s.size_value, s.size_unit),
             price: bestStore.price,
             storeName: bestStore.name,
             storeUrl: bestStore.url,
@@ -125,7 +126,7 @@ export async function processSmartList(listText: string) {
       validSizes = normalizedDbSizes;
       targetQty = 1;
       status = 'auto-adjusted';
-      msg = `Unit mismatch. Added 1 ${validSizes[0].sizeKey} instead.`;
+      msg = `Unit mismatch. Added 1 ${formatNormalizedUnit(validSizes[0].size_value, validSizes[0].size_unit)} instead.`;
     }
 
     validSizes.sort((a: any, b: any) => b.normalizedVal - a.normalizedVal);
@@ -136,7 +137,7 @@ export async function processSmartList(listText: string) {
       selectedSizes.push(smallestAvailable);
       if (targetQty < smallestAvailable.normalizedVal) {
         status = 'auto-adjusted';
-        msg = `Substituted with smallest available (${smallestAvailable.sizeKey})`;
+        msg = `Substituted with smallest available (${formatNormalizedUnit(smallestAvailable.size_value, smallestAvailable.size_unit)})`;
       }
     } else {
       let remaining = targetQty;
@@ -162,7 +163,7 @@ export async function processSmartList(listText: string) {
         id: `${topProduct.key}-${topVariant.variant_label}-${size.sizeKey}-${bestStore.name}-${bestStore.price}`,
         title: topProduct.title,
         variantLabel: topVariant.variant_label,
-        sizeLabel: size.sizeKey,
+        sizeLabel: formatNormalizedUnit(size.size_value, size.size_unit),
         price: bestStore.price,
         storeName: bestStore.name,
         storeUrl: bestStore.url,

@@ -1,14 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { inr } from '@/utils/format';
+import { inr, formatNormalizedUnit } from '@/utils/format';
 import { HeartIcon } from './Icons';
 import { useCart } from './Cart';
 
 type GroceryStore = { name: string; listing_title: string; price: number; inStock: boolean; url: string; image_url: string; };
 type GrocerySize = { sizeKey: string; size_value: number; size_unit: string; from_unit_price: number; stores: GroceryStore[]; };
 type GroceryVariant = { brand: string; variant: string; form: string; variant_label: string; sizes: GrocerySize[]; };
-
 type PostgresGroceryProduct = {
   key: string;
   title: string;
@@ -32,15 +31,25 @@ function getStoreBrand(name: string) {
 export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
   const { addToCart } = useCart();
   const [wished, setWished] = useState(false);
-  
   const [variantIdx, setVariantIdx] = useState(0);
   const [sizeIdx, setSizeIdx] = useState(0);
   const [selectedStoreIndex, setSelectedStoreIndex] = useState(0);
-  
+
   const currentVariant = p.variants[variantIdx] || p.variants[0];
-  const currentSize = currentVariant?.sizes[sizeIdx] || currentVariant?.sizes[0];
+
+  const sortedSizes = [...(currentVariant?.sizes || [])].sort((a, b) => {
+    const getNorm = (s: GrocerySize) => {
+      const u = s.size_unit.toLowerCase();
+      if (['kg', 'kilo', 'l', 'liter', 'litre'].includes(u)) return s.size_value * 1000;
+      if (u === 'dozen') return s.size_value * 12;
+      return s.size_value;
+    };
+    return getNorm(a) - getNorm(b);
+  });
+
+  const currentSize = sortedSizes[sizeIdx] || sortedSizes[0];
   const dynamicStores = currentSize?.stores || [];
-  
+
   useEffect(() => {
     setSelectedStoreIndex(0);
   }, [variantIdx, sizeIdx]);
@@ -55,7 +64,7 @@ export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
       id: `${p.key}-${currentVariant.variant_label}-${currentSize.sizeKey}-${activeStore.name}-${activeStore.price}`,
       title: p.title,
       variantLabel: currentVariant.variant_label,
-      sizeLabel: currentSize.sizeKey,
+      sizeLabel: formatNormalizedUnit(currentSize.size_value, currentSize.size_unit),
       price: activeStore.price,
       storeName: activeStore.name,
       storeUrl: activeStore.url,
@@ -94,9 +103,9 @@ export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
           )}
 
           <div className="row" style={{ gap: 6, marginTop: p.variants.length > 1 ? 8 : 10 }}>
-            {currentVariant.sizes.map((s, idx) => (
+            {sortedSizes.map((s, idx) => (
               <button key={s.sizeKey} type="button" className="variant" aria-pressed={idx === sizeIdx} onClick={() => setSizeIdx(idx)}>
-                {s.sizeKey}
+                {formatNormalizedUnit(s.size_value, s.size_unit)}
               </button>
             ))}
           </div>

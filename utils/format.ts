@@ -7,6 +7,38 @@ export const money = (n: number, currency: string = 'AED'): string =>
 export const discountPct = (price: number, mrp: number): number =>
   mrp > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0;
 
+export function formatNormalizedUnit(value: number, baseUnit: string): string {
+  const u = baseUnit.toLowerCase();
+  
+  if (['g', 'gm', 'gram'].includes(u)) {
+    if (value >= 1000 && value % 1000 === 0) {
+      return `${value / 1000}kg`;
+    } else if (value >= 1000) {
+      return `${(value / 1000).toFixed(2).replace(/\.00$/, '')}kg`;
+    }
+    return `${value}g`;
+  }
+
+  if (['ml', 'mili'].includes(u)) {
+    if (value >= 1000 && value % 1000 === 0) {
+      return `${value / 1000}L`;
+    } else if (value >= 1000) {
+      return `${(value / 1000).toFixed(2).replace(/\.00$/, '')}L`;
+    }
+    return `${value}ml`;
+  }
+
+  if (['pc', 'pcs', 'piece'].includes(u)) {
+    if (value % 12 === 0) {
+      const dozens = value / 12;
+      return dozens === 1 ? '1 dozen' : `${dozens} dozens`;
+    }
+    return `${value} pc`;
+  }
+
+  return `${value} ${baseUnit}`;
+}
+
 export function unitPrice(price: number, size: number, unit: Unit): { value: number; label: string; short: string } {
   switch (unit) {
     case 'L': {

@@ -9,9 +9,10 @@ import type { GroceryCategory } from '@/types';
 import { useCart } from '@/components/Cart';
 import { processSmartList, extractTextFromImage } from '../actions';
 
-type Sort = 'price' | 'unit' | 'discount';
+type Sort = 'relevance' | 'price' | 'unit' | 'discount';
 
 const SAMPLE_LIST = 'coconut 100g\napple 300g\nwatermelon 2kg\ncoriander 100g\n1 dozen eggs\nAmul butter 500g';
+const CHUNK_SIZE = 50;
 
 export default function GrocerySearch({
   categories,
@@ -33,23 +34,27 @@ export default function GrocerySearch({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeBrand, setActiveBrand] = useState('All');
   const [activeForm, setActiveForm] = useState('All');
-  const [sort, setSort] = useState<Sort>('price');
+  
+  const [sort, setSort] = useState<Sort>(q ? 'relevance' : 'price');
   const [modal, setModal] = useState<'list' | 'location' | 'summary' | null>(null);
   
   const [text, setText] = useState('');
   const [isProcessingList, setIsProcessingList] = useState(false);
   const [isExtractingText, setIsExtractingText] = useState(false);
   const [listSummary, setListSummary] = useState<any[]>([]);
-  const [address, setAddress] = useState('HSR Layout, Bengaluru 560102');
+  const [address, setAddress] = useState('South Asian University, New Delhi');
 
+  const [visibleCount, setVisibleCount] = useState(CHUNK_SIZE);
+  const observerTarget = useRef<HTMLDivElement>(null);
   const subsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSearchQuery(params.get('q') || '');
     setActiveBrand(params.get('brand') || 'All');
     setActiveForm(params.get('form') || 'All');
-    setSort((params.get('sort') as Sort) || 'price');
+    setSort((params.get('sort') as Sort) || (params.get('q') ? 'relevance' : 'price'));
     setModal(params.get('list') ? 'list' : null);
+    setVisibleCount(CHUNK_SIZE); 
   }, [params]);
 
   useEffect(() => { 
@@ -70,15 +75,13 @@ export default function GrocerySearch({
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    updateUrl({ q: searchQuery.trim(), brand: null, form: null });
+    updateUrl({ q: searchQuery.trim(), brand: null, form: null, sort: 'relevance' });
   };
-
 
   const sections = searchResults?.sections || [];
   const facets = searchResults?.facets || {};
   const brands = facets.brand || [];
   const forms = facets.form || [];
-
 
   const products = useMemo(() => {
     let l = [...sections];
@@ -89,12 +92,30 @@ export default function GrocerySearch({
       const aBest = a.variants?.[0]?.sizes?.[0]?.stores?.[0]?.price || 0;
       const bBest = b.variants?.[0]?.sizes?.[0]?.stores?.[0]?.price || 0;
       switch (sort) {
+        case 'relevance': return (b.relevance || 0) - (a.relevance || 0);
         case 'price': return aBest - bBest;
         case 'unit': return (a.variants?.[0]?.sizes?.[0]?.from_unit_price || 0) - (b.variants?.[0]?.sizes?.[0]?.from_unit_price || 0);
         default: return aBest - bBest;
       }
     });
   }, [searchResults?.sections, activeBrand, activeForm, sort]);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setVisibleCount((prev) => Math.min(prev + CHUNK_SIZE, products.length));
+        }
+      },
+      { threshold: 0.1, rootMargin: '200px' }
+    );
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current);
+    }
+    return () => observer.disconnect();
+  }, [products.length]);
+
+  const visibleProducts = products.slice(0, visibleCount);
 
   const submitList = async (t: string) => { 
     if (!t.trim()) return;
@@ -155,8 +176,6 @@ export default function GrocerySearch({
     e.target.value = ''; 
   };
 
-
-
   return (
     <div className="container container--wide">
       <section className="gs-hero">
@@ -172,7 +191,7 @@ export default function GrocerySearch({
 
           <div className="eyebrow" style={{ marginTop: 32 }}>Grocery price comparison</div>
           <h1 className="h1" style={{ fontSize: 'clamp(30px, 4vw, 40px)', marginTop: 10 }}>Find the best grocery prices without checking every store.</h1>
-          <p className="lead" style={{ marginTop: 14, fontSize: 17 }}>Search an item, or drop your entire list — we compare it across multiple UAE retailers.</p>
+          <p className="lead" style={{ marginTop: 14, fontSize: 17 }}>Search an item, or drop your entire list — we compare it across multiple Indian retailers.</p>
           
           <div style={{ marginTop: 28, maxWidth: 760 }}>
             <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, width: '100%' }}>
@@ -185,8 +204,6 @@ export default function GrocerySearch({
             <span className="muted" style={{ fontWeight: 500 }}>Have a grocery list?</span>
             
             <button type="button" className="chip" onClick={() => setModal('list')}><ListIcon size={18} color="var(--violet)" />Add List</button>
-            {/* <button type="button" className="chip" onClick={() => setModal('list')}><ImageIcon size={15} color="var(--violet)" />Upload image</button> */}
-            {/* <button type="button" className="chip" onClick={() => setModal('list')}><ClipIcon size={15} color="var(--violet)" />Paste list</button> */}
           </div>
         </div>
         <div className="gs-hero__banner"><img src="/assets/grocery/hero-banner.png" alt="Happy shopper next to Bazariyaa review badges" /></div>
@@ -239,6 +256,7 @@ export default function GrocerySearch({
             </div>
             <label className="row" style={{ fontSize: 13 }}><span className="muted">Sort</span>
               <select className="chip" value={sort} onChange={e => { setSort(e.target.value as Sort); updateUrl({ sort: e.target.value }); }}>
+                <option value="relevance">Relevance</option>
                 <option value="price">Lowest price</option>
                 <option value="unit">Lowest unit price</option>
               </select>
@@ -246,7 +264,10 @@ export default function GrocerySearch({
           </div>
 
           {products.length ? (
-            <div style={{ display: 'grid', gap: 12 }}>{products.map((p: any) => <GroceryCard key={p.key} p={p} />)}</div>
+            <div style={{ display: 'grid', gap: 12 }}>
+              {visibleProducts.map((p: any) => <GroceryCard key={p.key} p={p} />)}
+              {visibleCount < products.length && <div ref={observerTarget} style={{ height: 20 }} />}
+            </div>
           ) : (
             <div className="card" style={{ padding: 48, textAlign: 'center' }}><div style={{ fontSize: 40 }}>🧺</div><b style={{ display: 'block', marginTop: 12 }}>No products here yet</b><span className="muted" style={{ fontSize: 13.5 }}>Try another brand or search for a specific item.</span></div>
           )}
