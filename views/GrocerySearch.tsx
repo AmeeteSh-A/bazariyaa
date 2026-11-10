@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { GroceryCard } from '@/components/GroceryCard';
 import { Modal } from '@/components/Modal';
-import { ChevronRight, ClipIcon, ImageIcon, ListIcon, PinIcon, UploadIcon, CheckIcon } from '@/components/Icons';
+import { ChevronRight, ListIcon, PinIcon, UploadIcon, CheckIcon } from '@/components/Icons';
 import type { GroceryCategory } from '@/types';
 import { useCart } from '@/components/Cart';
 import { processSmartList, extractTextFromImage } from '../actions';
@@ -35,6 +35,8 @@ export default function GrocerySearch({
   const [activeBrand, setActiveBrand] = useState('All');
   const [activeForm, setActiveForm] = useState('All');
   
+  const [activeType, setActiveType] = useState('All');
+  
   const [sort, setSort] = useState<Sort>(q ? 'relevance' : 'price');
   const [modal, setModal] = useState<'list' | 'location' | 'summary' | null>(null);
   
@@ -52,6 +54,7 @@ export default function GrocerySearch({
     setSearchQuery(params.get('q') || '');
     setActiveBrand(params.get('brand') || 'All');
     setActiveForm(params.get('form') || 'All');
+    setActiveType(params.get('type') || 'All');
     setSort((params.get('sort') as Sort) || (params.get('q') ? 'relevance' : 'price'));
     setModal(params.get('list') ? 'list' : null);
     setVisibleCount(CHUNK_SIZE); 
@@ -75,30 +78,39 @@ export default function GrocerySearch({
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    updateUrl({ q: searchQuery.trim(), brand: null, form: null, sort: 'relevance' });
+    updateUrl({ q: searchQuery.trim(), brand: null, form: null, type: null, sort: 'relevance' });
   };
 
   const sections = searchResults?.sections || [];
   const facets = searchResults?.facets || {};
   const brands = facets.brand || [];
   const forms = facets.form || [];
+  const types = facets.type || [];
 
   const products = useMemo(() => {
     let l = [...sections];
-    if (activeBrand !== 'All') l = l.filter(s => s.title.toLowerCase().includes(activeBrand.toLowerCase()));
+    if (activeBrand !== 'All') l = l.filter(s => s.variants?.some((v: any) => v.brand.toLowerCase() === activeBrand.toLowerCase()));
     if (activeForm !== 'All') l = l.filter(s => s.variants?.some((v: any) => v.form.toLowerCase() === activeForm.toLowerCase()));
 
     return l.sort((a, b) => {
+
+      if (activeType !== 'All') {
+        const aMatch = a.title.toLowerCase() === activeType.toLowerCase();
+        const bMatch = b.title.toLowerCase() === activeType.toLowerCase();
+        if (aMatch && !bMatch) return -1;
+        if (!aMatch && bMatch) return 1;
+      }
+
       const aBest = a.variants?.[0]?.sizes?.[0]?.stores?.[0]?.price || 0;
       const bBest = b.variants?.[0]?.sizes?.[0]?.stores?.[0]?.price || 0;
       switch (sort) {
-        case 'relevance': return (b.relevance || 0) - (a.relevance || 0);
+        case 'relevance': return (b.relevance || 0) - (a.relevance || 0); 
         case 'price': return aBest - bBest;
         case 'unit': return (a.variants?.[0]?.sizes?.[0]?.from_unit_price || 0) - (b.variants?.[0]?.sizes?.[0]?.from_unit_price || 0);
         default: return aBest - bBest;
       }
     });
-  }, [searchResults?.sections, activeBrand, activeForm, sort]);
+  }, [searchResults?.sections, activeBrand, activeForm, activeType, sort]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -202,7 +214,6 @@ export default function GrocerySearch({
           
           <div className="row" style={{ marginTop: 16, fontSize: 20 }}>
             <span className="muted" style={{ fontWeight: 500 }}>Have a grocery list?</span>
-            
             <button type="button" className="chip" onClick={() => setModal('list')}><ListIcon size={18} color="var(--violet)" />Add List</button>
           </div>
         </div>
@@ -231,6 +242,20 @@ export default function GrocerySearch({
               ))}
             </>
           )}
+
+          {types.length > 0 && (
+            <>
+              <div className="faint" style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', padding: '24px 12px 10px' }}>Types</div>
+              <button type="button" className="gs-cat" aria-current={activeType === 'All'} onClick={() => { setActiveType('All'); updateUrl({ type: 'All' }); }}>
+                <span className="gs-cat__ic">🔍</span>All Types
+              </button>
+              {types.map((t: any, idx: number) => (
+  <button key={`${t.value}-${idx}`} type="button" className="gs-cat" aria-current={activeType === t.value} onClick={() => { setActiveType(t.value); updateUrl({ type: t.value }); }}>
+    <span className="gs-cat__ic">✨</span>{t.value} <span className="gs-cat__n">{t.count}</span>
+  </button>
+))}
+            </>
+          )}
         </aside>
 
         <div style={{ minWidth: 0 }}>
@@ -250,7 +275,8 @@ export default function GrocerySearch({
             <div>
               <h2 className="h3" style={{ fontSize: 22 }}>
                 {searchResults?.interpreted?.query ? `Results for “${searchResults.interpreted.query}”` : activeCat?.name}
-                <span className="faint"> · {activeBrand}</span>
+                {activeType !== 'All' && <span style={{ color: 'var(--violet)' }}> · {activeType}</span>}
+                {activeBrand !== 'All' && <span className="faint"> · {activeBrand}</span>}
               </h2>
               <div className="muted" style={{ fontSize: 13 }}>Showing {products.length} products · prices compared across retailers</div>
             </div>
@@ -265,7 +291,16 @@ export default function GrocerySearch({
 
           {products.length ? (
             <div style={{ display: 'grid', gap: 12 }}>
-              {visibleProducts.map((p: any) => <GroceryCard key={p.key} p={p} />)}
+              {visibleProducts.map((p: any, idx: number) => (
+  <div key={`${p.key}-${idx}`} onClick={() => {
+    if (activeType !== p.title) {
+      setActiveType(p.title);
+      updateUrl({ type: p.title });
+    }
+  }}>
+    <GroceryCard p={p} />
+  </div>
+))}
               {visibleCount < products.length && <div ref={observerTarget} style={{ height: 20 }} />}
             </div>
           ) : (
