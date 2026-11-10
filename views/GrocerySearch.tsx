@@ -34,9 +34,7 @@ export default function GrocerySearch({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeBrand, setActiveBrand] = useState('All');
   const [activeForm, setActiveForm] = useState('All');
-  
   const [activeType, setActiveType] = useState('All');
-  
   const [sort, setSort] = useState<Sort>(q ? 'relevance' : 'price');
   const [modal, setModal] = useState<'list' | 'location' | 'summary' | null>(null);
   
@@ -44,11 +42,13 @@ export default function GrocerySearch({
   const [isProcessingList, setIsProcessingList] = useState(false);
   const [isExtractingText, setIsExtractingText] = useState(false);
   const [listSummary, setListSummary] = useState<any[]>([]);
+  
   const [address, setAddress] = useState('South Asian University, New Delhi');
 
   const [visibleCount, setVisibleCount] = useState(CHUNK_SIZE);
   const observerTarget = useRef<HTMLDivElement>(null);
   const subsRef = useRef<HTMLDivElement>(null);
+  const gridTopRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSearchQuery(params.get('q') || '');
@@ -67,13 +67,13 @@ export default function GrocerySearch({
     }
   }, [activeCat?.id, q]);
 
-  const updateUrl = (updates: Record<string, string | null>) => {
+  const updateUrl = (updates: Record<string, string | null>, options?: { scroll?: boolean }) => {
     const p = new URLSearchParams(params.toString());
     Object.entries(updates).forEach(([k, v]) => {
       if (v && v !== 'All') p.set(k, v);
       else p.delete(k);
     });
-    router.push(`/grocery?${p.toString()}`);
+    router.push(`/grocery?${p.toString()}`, { scroll: options?.scroll ?? true });
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -93,7 +93,6 @@ export default function GrocerySearch({
     if (activeForm !== 'All') l = l.filter(s => s.variants?.some((v: any) => v.form.toLowerCase() === activeForm.toLowerCase()));
 
     return l.sort((a, b) => {
-
       if (activeType !== 'All') {
         const aMatch = a.title.toLowerCase() === activeType.toLowerCase();
         const bMatch = b.title.toLowerCase() === activeType.toLowerCase();
@@ -143,11 +142,40 @@ export default function GrocerySearch({
   };
 
   const handleFetchLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+    
     setAddress('Locating...');
-    setTimeout(() => {
-      setAddress('South Asian University, New Delhi');
+    
+    navigator.geolocation.getCurrentPosition(async (position) => {
+      try {
+        const { latitude, longitude } = position.coords;
+  
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+        const data = await res.json();
+        
+        if (data && data.address) {
+          const area = data.address.suburb || data.address.neighbourhood || data.address.city_district || "";
+          const city = data.address.city || data.address.town || data.address.state || "";
+          const shortAddr = [area, city].filter(Boolean).join(', ');
+          
+          setAddress(shortAddr || data.display_name.split(',').slice(0, 2).join(','));
+        } else {
+          setAddress('Location Found');
+        }
+      } catch (err) {
+        console.error("Failed to reverse geocode:", err);
+        setAddress('Failed to get address');
+      }
       setModal(null);
-    }, 1200);
+    }, (err) => {
+      console.error("Geolocation error:", err);
+      alert("Please allow location access in your browser to use this feature.");
+      setAddress('South Asian University, New Delhi'); 
+      setModal(null);
+    });
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,14 +274,27 @@ export default function GrocerySearch({
           {types.length > 0 && (
             <>
               <div className="faint" style={{ fontSize: 12, fontWeight: 600, textTransform: 'uppercase', padding: '24px 12px 10px' }}>Types</div>
-              <button type="button" className="gs-cat" aria-current={activeType === 'All'} onClick={() => { setActiveType('All'); updateUrl({ type: 'All' }); }}>
+              <button type="button" className="gs-cat" aria-current={activeType === 'All'} onClick={() => { setActiveType('All'); updateUrl({ type: 'All' }, { scroll: false }); gridTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
                 <span className="gs-cat__ic">🔍</span>All Types
               </button>
               {types.map((t: any, idx: number) => (
-  <button key={`${t.value}-${idx}`} type="button" className="gs-cat" aria-current={activeType === t.value} onClick={() => { setActiveType(t.value); updateUrl({ type: t.value }); }}>
-    <span className="gs-cat__ic">✨</span>{t.value} <span className="gs-cat__n">{t.count}</span>
-  </button>
-))}
+                <button 
+                  key={`${t.value}-${idx}`} 
+                  type="button" 
+                  className="gs-cat" 
+                  aria-current={activeType === t.value} 
+                  onClick={() => { 
+                    setActiveType(t.value); 
+                    updateUrl({ type: t.value }, { scroll: false });
+                    gridTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                >
+                  <span className="gs-cat__ic" style={{ background: t.image_url ? 'none' : 'var(--canvas)' }}>
+                    {t.image_url ? <img src={t.image_url} alt={t.value} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 8 }} /> : '✨'}
+                  </span>
+                  {t.value} <span className="gs-cat__n">{t.count}</span>
+                </button>
+              ))}
             </>
           )}
         </aside>
@@ -291,16 +332,11 @@ export default function GrocerySearch({
 
           {products.length ? (
             <div style={{ display: 'grid', gap: 12 }}>
+              <div ref={gridTopRef} style={{ scrollMarginTop: '20px' }} />
+              
               {visibleProducts.map((p: any, idx: number) => (
-  <div key={`${p.key}-${idx}`} onClick={() => {
-    if (activeType !== p.title) {
-      setActiveType(p.title);
-      updateUrl({ type: p.title });
-    }
-  }}>
-    <GroceryCard p={p} />
-  </div>
-))}
+                <GroceryCard key={`${p.key}-${idx}`} p={p} />
+              ))}
               {visibleCount < products.length && <div ref={observerTarget} style={{ height: 20 }} />}
             </div>
           ) : (
