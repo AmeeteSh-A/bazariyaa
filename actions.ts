@@ -12,6 +12,163 @@ const UNIT_MAP: Record<string, 'g' | 'ml' | 'pc'> = {
   packet: 'pc', pkt: 'pc', pouch: 'pc', bottle: 'pc', btl: 'pc', tin: 'pc', can: 'pc'
 };
 
+
+export type CartOptimizationRequest = {
+  key: string; 
+  brand: string;
+  sizeKey: string; 
+  qty: number;
+};
+
+interface StoreTotal {
+  totalItems: number;
+  totalPrice: number;
+  items: any[];
+}
+
+export async function optimizeBasket(
+  items: CartOptimizationRequest[], 
+  mode: 'cheapest_split' | 'single_vendor' = 'cheapest_split'
+) {
+  const supabase = serverSupabase();
+  if (!supabase) return { error: 'No database connection' };
+
+  const getDeliveryFee = (storeName: string) => {
+    const fees: Record<string, number> = {
+      'zepto': 15, 'blinkit': 12, 'instamart': 20, 'noon': 10
+    };
+    return fees[storeName.toLowerCase()] || 15;
+  };
+
+  const availableItems: Record<string, any[]> = {};
+  
+  for (const item of items) {
+    const { data } = await supabase.rpc('search_grocery', { search_q: item.key });
+    if (!data || !data.sections) continue;
+
+    const product = data.sections.find((s: any) => s.key === item.key);
+    if (!product) continue;
+
+    const variant = product.variants.find((v: any) => v.brand === item.brand) || product.variants[0];
+    if (!variant) continue;
+
+    const size = variant.sizes.find((s: any) => s.sizeKey === item.sizeKey) || variant.sizes[0];
+    if (size && size.stores) {
+      availableItems[`${item.key}-${item.brand}-${item.sizeKey}`] = size.stores.map((store: any) => ({
+        id: `${product.key}-${variant.variant_label}-${size.sizeKey}-${store.name}-${store.price}`,
+        productKey: product.key,
+        title: product.title,
+        brand: variant.brand,
+        variantLabel: variant.variant_label,
+        sizeKey: size.sizeKey,
+        sizeLabel: formatNormalizedUnit(size.size_value, size.size_unit),
+        price: store.price,
+        storeName: store.name,
+        storeUrl: store.url,
+        listingTitle: store.listing_title,
+        imageUrl: store.image_url || product.image_url,
+        qty: item.qty
+      }));
+    }
+  }
+
+  const storeTotals: Record<string, any> = {};
+  
+  Object.keys(availableItems).forEach(itemHash => {
+    const options = availableItems[itemHash];
+    
+    const storeBestOpt: Record<string, any> = {};
+    options.forEach(opt => {
+      if (!storeBestOpt[opt.storeName] || opt.price < storeBestOpt[opt.storeName].price) {
+        storeBestOpt[opt.storeName] = opt;
+      }
+    });
+
+    Object.values(storeBestOpt).forEach(opt => {
+      if (!storeTotals[opt.storeName]) {
+        storeTotals[opt.storeName] = { totalItems: 0, totalPrice: getDeliveryFee(opt.storeName), items: [] };
+      }
+      storeTotals[opt.storeName].totalItems += 1;
+      storeTotals[opt.storeName].totalPrice += (opt.price * opt.qty);
+      storeTotals[opt.storeName].items.push(opt);
+    });
+  });
+
+  let fulfillingStore: any = null;
+  let maxItems = -1;
+  let minPrice = Infinity;
+
+  Object.values(storeTotals).forEach(store => {
+    if (store.totalItems > maxItems || (store.totalItems === maxItems && store.totalPrice < minPrice)) {
+      maxItems = store.totalItems;
+      minPrice = store.totalPrice;
+      fulfillingStore = store;
+    }
+  });
+
+  const cheapestCart: any[] = [];
+  const usedStores = new Set<string>();
+  let itemTotal = 0;
+  let cheapestTotalItems = 0;
+
+  Object.keys(availableItems).forEach(itemHash => {
+    const options = availableItems[itemHash];
+    if (options.length === 0) return;
+    
+    options.sort((a, b) => a.price - b.price);
+    const bestOpt = options[0];
+    
+    cheapestCart.push(bestOpt);
+    usedStores.add(bestOpt.storeName);
+    itemTotal += (bestOpt.price * bestOpt.qty);
+    cheapestTotalItems += 1;
+  });
+
+  let totalDeliveryFee = 0;
+  usedStores.forEach(store => {
+    totalDeliveryFee += getDeliveryFee(store);
+  });
+  const cheapestTotal = itemTotal + totalDeliveryFee;
+
+  if (mode === 'single_vendor') {
+    return {
+      optimizedCart: fulfillingStore ? fulfillingStore.items : [],
+      summary: fulfillingStore ? `Found ${fulfillingStore.totalItems}/${items.length} items from a single store.` : 'Could not optimize.',
+      totalPrice: fulfillingStore ? fulfillingStore.totalPrice : 0,
+      deliveryFees: fulfillingStore ? getDeliveryFee(fulfillingStore.items[0].storeName) : 0
+    };
+  }
+
+  const results: any[] = [];
+  
+  if (fulfillingStore) {
+    results.push({
+      id: 'fulfilling',
+      items: fulfillingStore.items,
+      found: fulfillingStore.totalItems,
+      totalRequested: items.length,
+      price: fulfillingStore.totalPrice,
+      stores: [fulfillingStore.items[0].storeName]
+    });
+  }
+
+  if (cheapestTotalItems > 0 && (cheapestTotalItems / items.length) >= 0.8) {
+    const isActuallyBetter = !fulfillingStore || (cheapestTotal < fulfillingStore.totalPrice) || (cheapestTotalItems > fulfillingStore.totalItems);
+    
+    if (isActuallyBetter) {
+      results.push({
+        id: 'cheapest',
+        items: cheapestCart,
+        found: cheapestTotalItems,
+        totalRequested: items.length,
+        price: cheapestTotal,
+        stores: Array.from(usedStores)
+      });
+    }
+  }
+
+  return { options: results };
+}
 export async function processSmartList(listText: string) {
   const supabase = serverSupabase();
   if (!supabase) return { error: 'No database connection' };
@@ -78,6 +235,8 @@ export async function processSmartList(listText: string) {
         if (bestStore) {
           suggestedItemsToAdd.push({
             id: `${suggestedProduct.key}-${suggestedVariant.variant_label}-${s.sizeKey}-${bestStore.name}-${bestStore.price}`,
+            productKey: suggestedProduct.key,
+            sizeKey: s.sizeKey,
             title: suggestedProduct.title,
             variantLabel: suggestedVariant.variant_label,
             sizeLabel: formatNormalizedUnit(s.size_value, s.size_unit),
@@ -161,6 +320,8 @@ export async function processSmartList(listText: string) {
       
       lineItemsToAdd.push({
         id: `${topProduct.key}-${topVariant.variant_label}-${size.sizeKey}-${bestStore.name}-${bestStore.price}`,
+        productKey: topProduct.key,
+        sizeKey: size.sizeKey,
         title: topProduct.title,
         variantLabel: topVariant.variant_label,
         sizeLabel: formatNormalizedUnit(size.size_value, size.size_unit),

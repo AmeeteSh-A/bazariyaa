@@ -2,9 +2,12 @@
 
 import { createContext, useContext, useState, useMemo, useEffect, ReactNode } from 'react';
 import { inr } from '@/utils/format';
+import { optimizeBasket, CartOptimizationRequest } from '@/actions'; 
 
 export type CartItem = {
   id: string; 
+  productKey: string;
+  sizeKey: string;
   title: string;
   variantLabel: string;
   sizeLabel: string;
@@ -22,6 +25,7 @@ interface CartContextType {
   removeFromCart: (id: string) => void;
   updateQty: (id: string, delta: number) => void;
   clearCart: () => void;
+  setItems: (items: CartItem[]) => void;
   isCartOpen: boolean;
   setCartOpen: (open: boolean) => void;
   totalItems: number;
@@ -72,7 +76,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const totalItems = items.reduce((acc, item) => acc + item.qty, 0);
 
   return (
-    <CartContext.Provider value={{ items, addToCart, removeFromCart, updateQty, clearCart, isCartOpen, setCartOpen, totalItems }}>
+    <CartContext.Provider value={{ items, addToCart, removeFromCart, updateQty, clearCart, setItems, isCartOpen, setCartOpen, totalItems }}>
       {children}
       <CartDrawer />
     </CartContext.Provider>
@@ -80,13 +84,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
 }
 
 function CartDrawer() {
-  const { items, isCartOpen, setCartOpen, updateQty, removeFromCart, clearCart } = useCart();
+  const { items, isCartOpen, setCartOpen, updateQty, removeFromCart, clearCart, setItems } = useCart();
   
   const [isClosing, setIsClosing] = useState(false);
   const [renderOpen, setRenderOpen] = useState(false);
   
   const [itemToRemove, setItemToRemove] = useState<string | null>(null); 
   const [isClearingCart, setIsClearingCart] = useState(false);
+
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizedOptions, setOptimizedOptions] = useState<any[] | null>(null);
 
   useEffect(() => {
     if (isCartOpen) {
@@ -97,6 +104,7 @@ function CartDrawer() {
       const timer = setTimeout(() => {
         setRenderOpen(false);
         setIsClosing(false);
+        setOptimizedOptions(null); 
       }, 300); 
       return () => clearTimeout(timer);
     }
@@ -108,6 +116,25 @@ function CartDrawer() {
     } else {
       updateQty(item.id, -1);
     }
+  };
+
+  const handleOptimize = async () => {
+    setIsOptimizing(true);
+    const req: CartOptimizationRequest[] = items.map(i => ({
+      key: i.productKey || i.title.toLowerCase(), 
+      brand: i.variantLabel.split(' ')[0], 
+      sizeKey: i.sizeKey || i.sizeLabel.replace(/\s+/g, ''),
+      qty: i.qty
+    }));
+    
+    const res = await optimizeBasket(req);
+    if (res.options) setOptimizedOptions(res.options);
+    setIsOptimizing(false);
+  };
+
+  const applyOptimization = (optItems: CartItem[]) => {
+    setItems(optItems);
+    setOptimizedOptions(null);
   };
 
   const groupedCart = useMemo(() => {
@@ -145,7 +172,7 @@ function CartDrawer() {
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontSize: 20, margin: 0, fontWeight: 700 }}>Your Basket</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            {items.length > 0 && (
+            {items.length > 0 && !optimizedOptions && (
               <button 
                 onClick={() => setIsClearingCart(true)} 
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red, #E22028)', fontSize: 16, display: 'flex', alignItems: 'center', padding: 4 }}
@@ -189,42 +216,88 @@ function CartDrawer() {
           {items.length === 0 ? (
             <div style={{ textAlign: 'center', color: 'var(--faint)', marginTop: 40 }}>Your cart is empty.</div>
           ) : (
-            Object.entries(groupedCart).map(([store, data]) => (
-              <div key={store} style={{ marginBottom: 32 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', color: 'var(--violet)', marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{store}</span>
-                  <span>{inr(data.total)}</span>
+            <>
+              {!optimizedOptions ? (
+                <div style={{ marginBottom: 24, padding: 16, background: 'var(--violet-light, #F3F0FE)', borderRadius: 12, border: '1px solid var(--violet)' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--violet)', marginBottom: 8 }}>Save on delivery fees?</div>
+                  <div style={{ fontSize: 12, color: 'var(--faint)', marginBottom: 12 }}>We can bundle your items to find the absolute cheapest total.</div>
+                  <button 
+                    onClick={handleOptimize} 
+                    disabled={isOptimizing}
+                    className="btn btn--primary btn--block" 
+                    style={{ padding: '10px 0', borderRadius: 8 }}
+                  >
+                    {isOptimizing ? 'Calculating math...' : 'Optimize'}
+                  </button>
                 </div>
-                
-                <div style={{ display: 'grid', gap: 16 }}>
-                  {data.items.map(item => (
-                    <div key={item.id} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                      <img src={item.imageUrl} alt={item.title} style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--divider)' }} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
-                        <div style={{ fontSize: 12, color: 'var(--faint)' }}>{item.variantLabel} · {item.sizeLabel}</div>
-                        <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 4 }}>{inr(item.price)}</div>
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--divider)', borderRadius: 8, overflow: 'hidden' }}>
-                        <button onClick={() => handleMinus(item)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }}>-</button>
-                        <span style={{ fontSize: 13, width: 20, textAlign: 'center', fontWeight: 600 }}>{item.qty}</span>
-                        <button onClick={() => updateQty(item.id, 1)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }}>+</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+              ) : (
+                <div style={{ marginBottom: 24 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Select a smart basket:</div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {optimizedOptions.map((opt, idx) => (
+                      <div key={idx} style={{ padding: 16, border: '2px solid var(--violet)', borderRadius: 12, background: '#fff', cursor: 'pointer' }} onClick={() => applyOptimization(opt.items)}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                            {opt.stores.map((storeName: string) => (
+                              <div key={storeName} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--canvas)', border: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>
+                                  🏪
+                                </div>
+                                <span style={{ fontWeight: 700, color: 'var(--violet)', textTransform: 'capitalize', fontSize: 16 }}>{storeName}</span>
+                              </div>
+                            ))}
+                          </div>
 
-                <a 
-                  href={data.items[0]?.storeUrl} 
-                  target="_blank" 
-                  rel="noreferrer"
-                  className="btn btn--primary btn--block" 
-                  style={{ marginTop: 16, borderRadius: 8, padding: '10px 0', textDecoration: 'none' }}
-                >
-                  Checkout at {store} ({inr(data.total)})
-                </a>
-              </div>
-            ))
+                          <div style={{ fontWeight: 800, fontSize: 16 }}>{inr(opt.price)}</div>
+                        </div>
+                        <div style={{ fontSize: 12, color: 'var(--faint)' }}>
+                          Found {opt.found} of {opt.totalRequested} items
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={() => setOptimizedOptions(null)} style={{ marginTop: 12, background: 'none', border: 'none', color: 'var(--faint)', fontSize: 12, cursor: 'pointer', width: '100%' }}>Cancel optimization</button>
+                </div>
+              )}
+
+              {Object.entries(groupedCart).map(([store, data]) => (
+                <div key={store} style={{ marginBottom: 32 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', color: 'var(--violet)', marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{store}</span>
+                    <span>{inr(data.total)}</span>
+                  </div>
+                  
+                  <div style={{ display: 'grid', gap: 16 }}>
+                    {data.items.map(item => (
+                      <div key={item.id} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <img src={item.imageUrl} alt={item.title} style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 8, border: '1px solid var(--divider)' }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.title}</div>
+                          <div style={{ fontSize: 12, color: 'var(--faint)' }}>{item.variantLabel} · {item.sizeLabel}</div>
+                          <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 4 }}>{inr(item.price)}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--divider)', borderRadius: 8, overflow: 'hidden' }}>
+                          <button onClick={() => handleMinus(item)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }}>-</button>
+                          <span style={{ fontSize: 13, width: 20, textAlign: 'center', fontWeight: 600 }}>{item.qty}</span>
+                          <button onClick={() => updateQty(item.id, 1)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }}>+</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <a 
+                    href={data.items[0]?.storeUrl} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    className="btn btn--primary btn--block" 
+                    style={{ marginTop: 16, borderRadius: 8, padding: '10px 0', textDecoration: 'none' }}
+                  >
+                    Checkout at {store} ({inr(data.total)})
+                  </a>
+                </div>
+              ))}
+            </>
           )}
         </div>
       </div>
