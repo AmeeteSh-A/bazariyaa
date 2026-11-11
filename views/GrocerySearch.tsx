@@ -44,7 +44,8 @@ export default function GrocerySearch({
   const [listSummary, setListSummary] = useState<any[]>([]);
   
   const [address, setAddress] = useState('South Asian University, New Delhi');
-
+  const locInputRef = useRef<HTMLInputElement>(null);
+  
   const [visibleCount, setVisibleCount] = useState(CHUNK_SIZE);
   const observerTarget = useRef<HTMLDivElement>(null);
   const subsRef = useRef<HTMLDivElement>(null);
@@ -142,41 +143,40 @@ export default function GrocerySearch({
   };
 
   const handleFetchLocation = () => {
-    if (!navigator.geolocation) {
-      alert("Geolocation is not supported by your browser");
-      return;
-    }
-    
-    setAddress('Locating...');
-    
-    navigator.geolocation.getCurrentPosition(async (position) => {
-      try {
-        const { latitude, longitude } = position.coords;
+  if (!navigator.geolocation) {
+    alert("Geolocation is not supported by your browser");
+    return;
+  }
   
-        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
-        const data = await res.json();
+  setModal(null); 
+  setAddress('Locating...');
+  
+  navigator.geolocation.getCurrentPosition(async (position) => {
+    try {
+      const { latitude, longitude } = position.coords;
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+      const data = await res.json();
+      
+      if (data && data.address) {
+        const area = data.address.suburb || data.address.neighbourhood || data.address.city_district || "";
+        const city = data.address.city || data.address.town || data.address.state || "";
+        const shortAddr = [area, city].filter(Boolean).join(', ');
         
-        if (data && data.address) {
-          const area = data.address.suburb || data.address.neighbourhood || data.address.city_district || "";
-          const city = data.address.city || data.address.town || data.address.state || "";
-          const shortAddr = [area, city].filter(Boolean).join(', ');
-          
-          setAddress(shortAddr || data.display_name.split(',').slice(0, 2).join(','));
-        } else {
-          setAddress('Location Found');
-        }
-      } catch (err) {
-        console.error("Failed to reverse geocode:", err);
-        setAddress('Failed to get address');
+        setAddress(shortAddr || data.display_name.split(',').slice(0, 2).join(','));
+      } else {
+        setAddress('Location Found');
       }
-      setModal(null);
-    }, (err) => {
-      console.error("Geolocation error:", err);
-      alert("Please allow location access in your browser to use this feature.");
+    } catch (err) {
+      console.error("Failed to reverse geocode:", err);
+      alert("Network error: Failed to pinpoint location!");
       setAddress('South Asian University, New Delhi'); 
-      setModal(null);
-    });
-  };
+    }
+  }, (err) => {
+    console.error("Geolocation error:", err);
+    alert("Access Denied: Please allow location access in your browser!");
+    setAddress('South Asian University, New Delhi'); 
+  });
+};
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -302,9 +302,9 @@ export default function GrocerySearch({
         <div style={{ minWidth: 0 }}>
           <div style={{ position: 'relative', marginBottom: 20 }}>
             <div className="scroll-x" ref={subsRef} style={{ paddingRight: 44 }} role="group" aria-label="Brands">
-              <button type="button" className="chip" aria-pressed={activeBrand === 'All'} onClick={() => { setActiveBrand('All'); updateUrl({ brand: 'All' }); }}>All Brands</button>
+              <button type="button" className="chip" aria-pressed={activeBrand === 'All'} onClick={() => { setActiveBrand('All'); updateUrl({ brand: 'All' }, { scroll: false}); }}>All Brands</button>
               {brands.map((b: any) => (
-                <button key={b.value} type="button" className="chip" aria-pressed={b.value === activeBrand} onClick={() => { setActiveBrand(b.value); updateUrl({ brand: b.value }); }}>
+                <button key={b.value} type="button" className="chip" aria-pressed={b.value === activeBrand} onClick={() => { setActiveBrand(b.value); updateUrl({ brand: b.value }, {scroll: false}); }}>
                   {b.value} ({b.count})
                 </button>
               ))}
@@ -337,25 +337,64 @@ export default function GrocerySearch({
               {visibleProducts.map((p: any, idx: number) => (
                 <GroceryCard key={`${p.key}-${idx}`} p={p} />
               ))}
+            
               {visibleCount < products.length && <div ref={observerTarget} style={{ height: 20 }} />}
+            
             </div>
           ) : (
-            <div className="card" style={{ padding: 48, textAlign: 'center' }}><div style={{ fontSize: 40 }}>🧺</div><b style={{ display: 'block', marginTop: 12 }}>No products here yet</b><span className="muted" style={{ fontSize: 13.5 }}>Try another brand or search for a specific item.</span></div>
+            <div className="card" style={{ padding: 48, textAlign: 'center' }}>
+              <div style={{ fontSize: 40 }}>🧺</div>
+              <b style={{ display: 'block', marginTop: 12 }}>No products here yet</b>
+              <span className="muted" style={{ fontSize: 13.5 }}>Try another brand or search for a specific item.</span>
+            </div>
           )}
         </div>
       </div>
 
       {modal === 'location' && (
-        <Modal title="Choose delivery location" subtitle="Prices and availability vary by area." onClose={() => setModal(null)}>
-          <div style={{ display: 'grid', gap: 12 }}>
-            <button onClick={handleFetchLocation} className="btn btn--primary" style={{ padding: '14px', borderRadius: 12, justifyContent: 'center' }}>
-              <PinIcon size={18} /> Use Current Location
-            </button>
-            <div style={{ textAlign: 'center', margin: '8px 0', fontSize: 12, color: 'var(--faint)' }}>OR</div>
-            <input type="text" placeholder="Enter ZIP code or area" className="input" style={{ padding: '14px', borderRadius: 12, border: '1px solid var(--divider)', width: '100%' }} />
-          </div>
-        </Modal>
-      )}
+  <Modal title="Choose delivery location" subtitle="Prices and availability vary by area." onClose={() => setModal(null)}>
+    <div style={{ display: 'grid', gap: 12 }}>
+      <button onClick={handleFetchLocation} className="btn btn--primary" style={{ padding: '14px', borderRadius: 12, justifyContent: 'center' }}>
+        <PinIcon size={18} /> Use Current Location
+      </button>
+      
+      <div style={{ textAlign: 'center', margin: '8px 0', fontSize: 12, color: 'var(--faint)' }}>OR</div>
+      
+      <div style={{ display: 'flex', gap: 8 }}>
+        <input 
+          ref={locInputRef}
+          type="text" 
+          placeholder="Enter ZIP code or area" 
+          className="input" 
+          style={{ flex: 1, padding: '14px', borderRadius: 12, border: '1px solid var(--divider)' }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && e.currentTarget.value.trim() !== '') {
+              const val = e.currentTarget.value.trim();
+              setModal(null);
+              setAddress('Setting...');
+              setTimeout(() => setAddress(val), 400); 
+            }
+          }}
+        />
+        <button 
+          type="button"
+          className="btn btn--secondary"
+          style={{ padding: '0 24px', borderRadius: 12, fontWeight: 600, background: 'var(--canvas)', border: '1px solid var(--divider)' }}
+          onClick={() => {
+            if (locInputRef.current && locInputRef.current.value.trim() !== '') {
+              const val = locInputRef.current.value.trim();
+              setModal(null);
+              setAddress('Setting...');
+              setTimeout(() => setAddress(val), 400); 
+            }
+          }}
+        >
+          Set
+        </button>
+      </div>
+    </div>
+  </Modal>
+)}
 
       {modal === 'list' && (
         <Modal title="Smart Grocery List" subtitle="Type, paste, upload a .txt, or upload a photo of your list." onClose={() => setModal(null)}>
