@@ -43,6 +43,16 @@ export async function optimizeBasket(
   const availableItems: Record<string, any[]> = {};
   
   for (const item of items) {
+    
+    const reqMatch = String(item.sizeKey).match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)$/);
+    let reqSizeValue = 1;
+    let reqSizeUnit = 'pc';
+    if (reqMatch) {
+      reqSizeValue = parseFloat(reqMatch[1]);
+      reqSizeUnit = reqMatch[2].toLowerCase();
+    }
+    const totalReqQty = reqSizeValue * item.qty;
+
     const { data } = await supabase.rpc('search_grocery', { search_q: item.key });
     if (!data || !data.sections) continue;
 
@@ -52,39 +62,54 @@ export async function optimizeBasket(
     const variant = product.variants.find((v: any) => v.brand === item.brand) || product.variants[0];
     if (!variant) continue;
 
-    const size = variant.sizes.find((s: any) => s.sizeKey === item.sizeKey) || variant.sizes[0];
-    if (size && size.stores) {
-      availableItems[`${item.key}-${item.brand}-${item.sizeKey}`] = size.stores.map((store: any) => ({
-        id: `${product.key}-${variant.variant_label}-${size.sizeKey}-${store.name}-${store.price}`,
+    const storeBestCost: Record<string, any> = {};
+
+    variant.sizes.forEach((size: any) => {
+      if (size.size_unit.toLowerCase() !== reqSizeUnit) return;
+
+      size.stores.forEach((store: any) => {
+        const packsNeeded = Math.ceil(totalReqQty / size.size_value);
+        const totalFulfillmentCost = packsNeeded * store.price;
+
+        if (!storeBestCost[store.name] || totalFulfillmentCost < storeBestCost[store.name].totalFulfillmentCost) {
+          storeBestCost[store.name] = {
+            totalFulfillmentCost,
+            packsNeeded,
+            size,
+            store
+          };
+        }
+      });
+    });
+
+    const itemHash = `${item.key}-${item.brand}-${item.sizeKey}`;
+    availableItems[itemHash] = [];
+
+    Object.values(storeBestCost).forEach((best: any) => {
+      availableItems[itemHash].push({
+        id: `${product.key}-${variant.variant_label}-${best.size.sizeKey}-${best.store.name}-${best.store.price}`,
         productKey: product.key,
         title: product.title,
         brand: variant.brand,
         variantLabel: variant.variant_label,
-        sizeKey: size.sizeKey,
-        sizeLabel: formatNormalizedUnit(size.size_value, size.size_unit),
-        price: store.price,
-        storeName: store.name,
-        storeUrl: store.url,
-        listingTitle: store.listing_title,
-        imageUrl: store.image_url || product.image_url,
-        qty: item.qty
-      }));
-    }
+        sizeKey: best.size.sizeKey,
+        sizeLabel: formatNormalizedUnit(best.size.size_value, best.size.size_unit),
+        price: best.store.price,
+        storeName: best.store.name,
+        storeUrl: best.store.url,
+        listingTitle: best.store.listing_title,
+        imageUrl: best.store.image_url || product.image_url,
+        qty: best.packsNeeded 
+      });
+    });
   }
 
   const storeTotals: Record<string, any> = {};
   
   Object.keys(availableItems).forEach(itemHash => {
-    const options = availableItems[itemHash];
-    const storeBestOpt: Record<string, any> = {};
+    const options = availableItems[itemHash]; 
     
     options.forEach(opt => {
-      if (!storeBestOpt[opt.storeName] || opt.price < storeBestOpt[opt.storeName].price) {
-        storeBestOpt[opt.storeName] = opt;
-      }
-    });
-
-    Object.values(storeBestOpt).forEach(opt => {
       if (!storeTotals[opt.storeName]) {
         storeTotals[opt.storeName] = { totalItems: 0, itemTotal: 0, totalPrice: getDeliveryFee(opt.storeName), items: [] };
       }
@@ -116,7 +141,7 @@ export async function optimizeBasket(
     const options = availableItems[itemHash];
     if (options.length === 0) return;
     
-    options.sort((a, b) => a.price - b.price);
+    options.sort((a, b) => (a.price * a.qty) - (b.price * b.qty));
     const bestOpt = options[0];
     
     cheapestCart.push(bestOpt);
@@ -174,7 +199,6 @@ export async function optimizeBasket(
 
   return { options: results };
 }
-
 
 export async function processSmartList(listText: string) {
   const supabase = serverSupabase();
