@@ -76,8 +76,8 @@ export async function optimizeBasket(
   
   Object.keys(availableItems).forEach(itemHash => {
     const options = availableItems[itemHash];
-    
     const storeBestOpt: Record<string, any> = {};
+    
     options.forEach(opt => {
       if (!storeBestOpt[opt.storeName] || opt.price < storeBestOpt[opt.storeName].price) {
         storeBestOpt[opt.storeName] = opt;
@@ -86,9 +86,10 @@ export async function optimizeBasket(
 
     Object.values(storeBestOpt).forEach(opt => {
       if (!storeTotals[opt.storeName]) {
-        storeTotals[opt.storeName] = { totalItems: 0, totalPrice: getDeliveryFee(opt.storeName), items: [] };
+        storeTotals[opt.storeName] = { totalItems: 0, itemTotal: 0, totalPrice: getDeliveryFee(opt.storeName), items: [] };
       }
       storeTotals[opt.storeName].totalItems += 1;
+      storeTotals[opt.storeName].itemTotal += (opt.price * opt.qty);
       storeTotals[opt.storeName].totalPrice += (opt.price * opt.qty);
       storeTotals[opt.storeName].items.push(opt);
     });
@@ -148,6 +149,8 @@ export async function optimizeBasket(
       found: fulfillingStore.totalItems,
       totalRequested: items.length,
       price: fulfillingStore.totalPrice,
+      itemTotal: fulfillingStore.itemTotal,
+      deliveryFees: getDeliveryFee(fulfillingStore.items[0].storeName),
       stores: [fulfillingStore.items[0].storeName]
     });
   }
@@ -162,6 +165,8 @@ export async function optimizeBasket(
         found: cheapestTotalItems,
         totalRequested: items.length,
         price: cheapestTotal,
+        itemTotal: itemTotal,
+        deliveryFees: totalDeliveryFee,
         stores: Array.from(usedStores)
       });
     }
@@ -169,6 +174,8 @@ export async function optimizeBasket(
 
   return { options: results };
 }
+
+
 export async function processSmartList(listText: string) {
   const supabase = serverSupabase();
   if (!supabase) return { error: 'No database connection' };

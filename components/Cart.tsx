@@ -94,6 +94,8 @@ function CartDrawer() {
 
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizedOptions, setOptimizedOptions] = useState<any[] | null>(null);
+  
+  const [previewBasket, setPreviewBasket] = useState<CartItem[] | null>(null);
 
   useEffect(() => {
     if (isCartOpen) {
@@ -105,6 +107,7 @@ function CartDrawer() {
         setRenderOpen(false);
         setIsClosing(false);
         setOptimizedOptions(null); 
+        setPreviewBasket(null); 
       }, 300); 
       return () => clearTimeout(timer);
     }
@@ -132,20 +135,20 @@ function CartDrawer() {
     setIsOptimizing(false);
   };
 
-  const applyOptimization = (optItems: CartItem[]) => {
-    setItems(optItems);
-    setOptimizedOptions(null);
+  const applyOptimizationPreview = (optItems: CartItem[]) => {
+    setPreviewBasket(optItems);
   };
+  const displayItems = previewBasket || items;
 
   const groupedCart = useMemo(() => {
     const groups: Record<string, { items: CartItem[], total: number }> = {};
-    items.forEach(item => {
+    displayItems.forEach(item => {
       if (!groups[item.storeName]) groups[item.storeName] = { items: [], total: 0 };
       groups[item.storeName].items.push(item);
       groups[item.storeName].total += item.price * item.qty;
     });
     return groups;
-  }, [items]);
+  }, [displayItems]);
 
   if (!renderOpen) return null;
 
@@ -170,9 +173,9 @@ function CartDrawer() {
         animation: isClosing ? 'slideOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards' : 'slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards'
       }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--divider)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: 20, margin: 0, fontWeight: 700 }}>Your Basket</h2>
+          <h2 style={{ fontSize: 20, margin: 0, fontWeight: 700 }}>{previewBasket ? 'Previewing Basket' : 'Your Basket'}</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-            {items.length > 0 && !optimizedOptions && (
+            {items.length > 0 && !optimizedOptions && !previewBasket && (
               <button 
                 onClick={() => setIsClearingCart(true)} 
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red, #E22028)', fontSize: 16, display: 'flex', alignItems: 'center', padding: 4 }}
@@ -213,11 +216,12 @@ function CartDrawer() {
             </div>
           )}
 
-          {items.length === 0 ? (
+          {displayItems.length === 0 ? (
             <div style={{ textAlign: 'center', color: 'var(--faint)', marginTop: 40 }}>Your cart is empty.</div>
           ) : (
             <>
-              {!optimizedOptions ? (
+              {/* SHOW OPTIMIZATION BANNER (Only if not previewing) */}
+              {!optimizedOptions && !previewBasket && (
                 <div style={{ marginBottom: 24, padding: 16, background: 'var(--violet-light, #F3F0FE)', borderRadius: 12, border: '1px solid var(--violet)' }}>
                   <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--violet)', marginBottom: 8 }}>Save on delivery fees?</div>
                   <div style={{ fontSize: 12, color: 'var(--faint)', marginBottom: 12 }}>We can bundle your items to find the absolute cheapest total.</div>
@@ -230,28 +234,32 @@ function CartDrawer() {
                     {isOptimizing ? 'Calculating math...' : 'Optimize'}
                   </button>
                 </div>
-              ) : (
+              )}
+
+              {/* SHOW SMART CHOICES (Only if we haven't selected one to preview yet) */}
+              {optimizedOptions && !previewBasket && (
                 <div style={{ marginBottom: 24 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Select a smart basket:</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Select a smart basket to preview:</div>
                   <div style={{ display: 'grid', gap: 12 }}>
                     {optimizedOptions.map((opt, idx) => (
-                      <div key={idx} style={{ padding: 16, border: '2px solid var(--violet)', borderRadius: 12, background: '#fff', cursor: 'pointer' }} onClick={() => applyOptimization(opt.items)}>
+                      <div key={idx} style={{ padding: 16, border: '2px solid var(--violet)', borderRadius: 12, background: '#fff', cursor: 'pointer' }} onClick={() => applyOptimizationPreview(opt.items)}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
                           
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                             {opt.stores.map((storeName: string) => (
                               <div key={storeName} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--canvas)', border: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>
-                                  🏪
-                                </div>
+                                <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--canvas)', border: '1px solid var(--divider)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>🏪</div>
                                 <span style={{ fontWeight: 700, color: 'var(--violet)', textTransform: 'capitalize', fontSize: 16 }}>{storeName}</span>
                               </div>
                             ))}
                           </div>
 
-                          <div style={{ fontWeight: 800, fontSize: 16 }}>{inr(opt.price)}</div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontWeight: 800, fontSize: 16 }}>{inr(opt.price)}</div>
+                            <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 4 }}>Items: {inr(opt.itemTotal)} + Delivery: {inr(opt.deliveryFees)}</div>
+                          </div>
                         </div>
-                        <div style={{ fontSize: 12, color: 'var(--faint)' }}>
+                        <div style={{ fontSize: 12, color: 'var(--faint)', marginTop: 4 }}>
                           Found {opt.found} of {opt.totalRequested} items
                         </div>
                       </div>
@@ -261,7 +269,8 @@ function CartDrawer() {
                 </div>
               )}
 
-              {Object.entries(groupedCart).map(([store, data]) => (
+              {/* RENDER THE ACTUAL CART ITEMS (Real or Preview) */}
+              {(!optimizedOptions || previewBasket) && Object.entries(groupedCart).map(([store, data]) => (
                 <div key={store} style={{ marginBottom: 32 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase', color: 'var(--violet)', marginBottom: 12, display: 'flex', justifyContent: 'space-between' }}>
                     <span>{store}</span>
@@ -278,28 +287,49 @@ function CartDrawer() {
                           <div style={{ fontSize: 13.5, fontWeight: 600, marginTop: 4 }}>{inr(item.price)}</div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--divider)', borderRadius: 8, overflow: 'hidden' }}>
-                          <button onClick={() => handleMinus(item)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }}>-</button>
+                          <button onClick={() => handleMinus(item)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }} disabled={!!previewBasket}>-</button>
                           <span style={{ fontSize: 13, width: 20, textAlign: 'center', fontWeight: 600 }}>{item.qty}</span>
-                          <button onClick={() => updateQty(item.id, 1)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }}>+</button>
+                          <button onClick={() => updateQty(item.id, 1)} style={{ padding: '4px 10px', background: 'none', border: 'none', cursor: 'pointer' }} disabled={!!previewBasket}>+</button>
                         </div>
                       </div>
                     ))}
                   </div>
 
-                  <a 
-                    href={data.items[0]?.storeUrl} 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="btn btn--primary btn--block" 
-                    style={{ marginTop: 16, borderRadius: 8, padding: '10px 0', textDecoration: 'none' }}
-                  >
-                    Checkout at {store} ({inr(data.total)})
-                  </a>
+                  {!previewBasket && (
+                    <a 
+                      href={data.items[0]?.storeUrl} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      className="btn btn--primary btn--block" 
+                      style={{ marginTop: 16, borderRadius: 8, padding: '10px 0', textDecoration: 'none' }}
+                    >
+                      Checkout at {store} ({inr(data.total)})
+                    </a>
+                  )}
                 </div>
               ))}
             </>
           )}
         </div>
+        
+        {/* PREVIEW STICKY FOOTER */}
+        {previewBasket && (
+          <div style={{ padding: 16, borderTop: '1px solid var(--divider)', background: '#fff', display: 'flex', gap: 12 }}>
+            <button 
+              onClick={() => { setPreviewBasket(null); setOptimizedOptions(null); }} 
+              style={{ flex: 1, padding: '12px 0', borderRadius: 12, background: 'var(--canvas)', border: '1px solid var(--divider)', fontWeight: 600, cursor: 'pointer' }}
+            >
+              Discard
+            </button>
+            <button 
+              onClick={() => { setItems(previewBasket); setPreviewBasket(null); setOptimizedOptions(null); }} 
+              style={{ flex: 1, padding: '12px 0', borderRadius: 12, background: 'var(--violet)', color: '#fff', border: 'none', fontWeight: 600, cursor: 'pointer' }}
+            >
+              Keep Basket
+            </button>
+          </div>
+        )}
+
       </div>
     </>
   );
