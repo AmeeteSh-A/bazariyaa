@@ -12,6 +12,23 @@ const UNIT_MAP: Record<string, 'g' | 'ml' | 'pc'> = {
   packet: 'pc', pkt: 'pc', pouch: 'pc', bottle: 'pc', btl: 'pc', tin: 'pc', can: 'pc'
 };
 
+function getDistance(a: string, b: string): number {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
 
 export type CartOptimizationRequest = {
   key: string; 
@@ -19,12 +36,6 @@ export type CartOptimizationRequest = {
   sizeKey: string; 
   qty: number;
 };
-
-interface StoreTotal {
-  totalItems: number;
-  totalPrice: number;
-  items: any[];
-}
 
 export async function optimizeBasket(
   items: CartOptimizationRequest[], 
@@ -43,7 +54,6 @@ export async function optimizeBasket(
   const availableItems: Record<string, any[]> = {};
   
   for (const item of items) {
-    
     const reqMatch = String(item.sizeKey).match(/^(\d+(?:\.\d+)?)\s*([a-zA-Z]+)$/);
     let reqSizeValue = 1;
     let reqSizeUnit = 'pc';
@@ -107,7 +117,7 @@ export async function optimizeBasket(
   const storeTotals: Record<string, any> = {};
   
   Object.keys(availableItems).forEach(itemHash => {
-    const options = availableItems[itemHash]; 
+    const options = availableItems[itemHash];
     
     options.forEach(opt => {
       if (!storeTotals[opt.storeName]) {
@@ -250,9 +260,11 @@ export async function processSmartList(listText: string) {
     }
 
     const searchClean = searchQ.toLowerCase();
+    
     const bestMatch = data.sections.find((s: any) => {
       const titleClean = s.title.toLowerCase();
-      return titleClean.includes(searchClean) || searchClean.includes(titleClean);
+      const regex = new RegExp(`\\b${titleClean}s?\\b`, 'i');
+      return regex.test(searchClean);
     });
 
     if (!bestMatch) {
@@ -293,55 +305,81 @@ export async function processSmartList(listText: string) {
     }
 
     const topProduct = bestMatch;
-    let topVariant = topProduct.variants[0]; 
+    let topVariant = topProduct.variants[0];
     let foundBrand = false;
-
-    for (const v of topProduct.variants) {
-      const brandClean = v.brand.toLowerCase();
-      if (brandClean !== 'generic' && brandClean !== 'unknown' && searchClean.includes(brandClean)) {
-        topVariant = v;
-        foundBrand = true;
-        break;
-      }
-    }
+    let fuzzyBrandMatch = null;
 
     const titleClean = topProduct.title.toLowerCase();
-    let strippedSearch = searchClean.replace(titleClean, '');
-    
+    let strippedSearch = searchClean.replace(new RegExp(`\\b${titleClean}s?\\b`, 'ig'), '');
     ['fresh', 'frozen', 'organic', 'raw'].forEach(w => {
       strippedSearch = strippedSearch.replace(new RegExp(`\\b${w}\\b`, 'gi'), '');
     });
-    
     const extraWords = strippedSearch.replace(/\s+/g, ' ').trim();
 
+    if (extraWords) {
+      const tokens = extraWords.split(' ');
+
+      for (const v of topProduct.variants) {
+        const brandClean = v.brand.toLowerCase();
+        if (brandClean === 'generic' || brandClean === 'unknown') continue;
+
+        // Exact substring check
+        if (extraWords.includes(brandClean) || brandClean.includes(extraWords)) {
+          topVariant = v;
+          foundBrand = true;
+          break;
+        }
+
+        // Fuzzy typo check (e.g., "jaas" vs "jaaz")
+        for (const token of tokens) {
+          if (token.length > 2 && getDistance(token, brandClean) <= 2) {
+            fuzzyBrandMatch = v;
+          }
+        }
+      }
+    }
+
+    // If they typed a brand but we couldn't find an exact match, offer the fuzzy match or Generic
     if (!foundBrand && extraWords.length > 2 && topProduct.variants.length > 0) {
-      const s = topVariant.sizes[0];
-      const bestStore = s?.stores[0];
+      let s, bestStore;
+      
+      if (fuzzyBrandMatch) {
+        s = fuzzyBrandMatch.sizes[0];
+        bestStore = s?.stores[0];
+      } else {
+        s = topVariant.sizes[0]; // fallback to generic
+        bestStore = s?.stores[0];
+      }
       
       const suggestedItemsToAdd = [];
       if (bestStore) {
+        const suggestedVariant = fuzzyBrandMatch || topVariant;
         suggestedItemsToAdd.push({
-          id: `${topProduct.key}-${topVariant.variant_label}-${s.sizeKey}-${bestStore.name}-${bestStore.price}`,
+          id: `${topProduct.key}-${suggestedVariant.variant_label}-${s.sizeKey}-${bestStore.name}-${bestStore.price}`,
           productKey: topProduct.key,
           sizeKey: s.sizeKey,
           title: topProduct.title,
-          variantLabel: topVariant.variant_label,
+          variantLabel: suggestedVariant.variant_label,
           sizeLabel: formatNormalizedUnit(s.size_value, s.size_unit),
           price: bestStore.price,
           storeName: bestStore.name,
           storeUrl: bestStore.url,
           listingTitle: bestStore.listing_title,
           imageUrl: bestStore.image_url || topProduct.image_url,
-          qty: 1 
+          qty: 1
         });
       }
+
+      const promptMsg = fuzzyBrandMatch 
+        ? `Did you mean ${fuzzyBrandMatch.brand}? Add ${fuzzyBrandMatch.variant_label}?`
+        : `Couldn't find brand "${extraWords}". Add ${topVariant.variant_label} instead?`;
 
       return {
         items: [],
         summaryItem: {
           line,
           status: 'miss',
-          msg: `Couldn't find "${extraWords}". Add ${topVariant.variant_label} instead?`,
+          msg: promptMsg,
           suggestedItems: suggestedItemsToAdd
         }
       };
@@ -431,51 +469,4 @@ export async function processSmartList(listText: string) {
   });
 
   return { items: itemsToAdd, summary };
-}
-
-export async function extractTextFromImage(base64Image: string) {
-  try {
-    const apiKey = process.env.GROQ_API_KEY;
-    if (!apiKey) return { error: "Missing GROQ_API_KEY in environment." };
-
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model: "llama-3.2-11b-vision-preview",
-        messages: [
-          {
-            role: "user",
-            content: [
-              { 
-                type: "text", 
-                text: "Extract the grocery list from this image. Return ONLY the items and their quantities, one per line. Do not include introductory text, markdown formatting, bullet points, or numbers at the start of the lines." 
-              },
-              { 
-                type: "image_url", 
-                image_url: { url: base64Image } 
-              }
-            ]
-          }
-        ],
-        temperature: 0.1, 
-        max_tokens: 512
-      })
-    });
-
-    if (!response.ok) {
-      console.error("Vision API Error:", await response.text());
-      return { error: "Failed to read the image. The image might be too complex or blurry." };
-    }
-
-    const data = await response.json();
-    return { text: data.choices[0].message.content.trim() };
-    
-  } catch (error: any) {
-    console.error("OCR Exception:", error);
-    return { error: "Network error while reading the image." };
-  }
 }
