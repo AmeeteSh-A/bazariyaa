@@ -259,108 +259,101 @@ export async function processSmartList(listText: string) {
       return { items: [], summaryItem: { line, status: 'miss', msg: 'Item not found in any store' } };
     }
 
+    // Trust the database's fuzzy match for the base product (e.g. Apple)
+    const topProduct = data.sections[0];
     const searchClean = searchQ.toLowerCase();
-    
-    const bestMatch = data.sections.find((s: any) => {
-      const titleClean = s.title.toLowerCase();
-      const regex = new RegExp(`\\b${titleClean}s?\\b`, 'i');
-      return regex.test(searchClean);
+    const titleClean = topProduct.title.toLowerCase();
+
+    // 1. Check if the base product is an EXACT word match (so "applee" fails and gets flagged as a typo)
+    const baseExactRegex = new RegExp(`\\b${titleClean}s?\\b`, 'i');
+    const isBaseExact = baseExactRegex.test(searchClean);
+
+    // 2. Identify Brand
+    let exactBrandVariant = null;
+    let fuzzyBrandVariant = null;
+    let genericVariant = topProduct.variants.find((v: any) => v.brand.toLowerCase() === 'generic' || v.brand.toLowerCase() === 'unknown') || topProduct.variants[0];
+
+    // Isolate extra words to check for brands (strip noise and base title)
+    const searchTokens = searchClean.split(/\s+/).filter(t => {
+      if (['fresh', 'frozen', 'organic', 'raw', '-', 'of'].includes(t)) return false;
+      // If the word is just a typo of the base product (e.g. "applee"), don't treat it as a brand
+      const titleTokens = titleClean.split(/\s+/);
+      for (const tt of titleTokens) {
+        if (getDistance(t, tt) <= 2) return false;
+      }
+      return true;
     });
 
-    if (!bestMatch) {
-      const suggestedProduct = data.sections[0];
-      const suggestedVariant = suggestedProduct.variants[0];
-      const suggestedItemsToAdd: any[] = [];
+    const possibleBrandWords = searchTokens.join(' ').trim();
 
-      if (suggestedVariant && suggestedVariant.sizes && suggestedVariant.sizes.length > 0) {
-        const s = suggestedVariant.sizes[0];
-        const bestStore = s.stores[0];
-        if (bestStore) {
-          suggestedItemsToAdd.push({
-            id: `${suggestedProduct.key}-${suggestedVariant.variant_label}-${s.sizeKey}-${bestStore.name}-${bestStore.price}`,
-            productKey: suggestedProduct.key,
-            sizeKey: s.sizeKey,
-            title: suggestedProduct.title,
-            variantLabel: suggestedVariant.variant_label,
-            sizeLabel: formatNormalizedUnit(s.size_value, s.size_unit),
-            price: bestStore.price,
-            storeName: bestStore.name,
-            storeUrl: bestStore.url,
-            listingTitle: bestStore.listing_title,
-            imageUrl: bestStore.image_url || suggestedProduct.image_url,
-            qty: 1
-          });
-        }
+    for (const v of topProduct.variants) {
+      const brand = v.brand.toLowerCase();
+      if (brand === 'generic' || brand === 'unknown') continue;
+      // Exact string match
+      if (possibleBrandWords.includes(brand) || brand.includes(possibleBrandWords)) {
+        exactBrandVariant = v;
+        break;
       }
-
-      return {
-        items: [],
-        summaryItem: {
-          line,
-          status: 'miss',
-          msg: `Not found (Did you mean ${data.sections[0].title}?)`,
-          suggestedItems: suggestedItemsToAdd
-        }
-      };
     }
 
-    const topProduct = bestMatch;
-    let topVariant = topProduct.variants[0];
-    let foundBrand = false;
-    let fuzzyBrandMatch = null;
-
-    const titleClean = topProduct.title.toLowerCase();
-    let strippedSearch = searchClean.replace(new RegExp(`\\b${titleClean}s?\\b`, 'ig'), '');
-    ['fresh', 'frozen', 'organic', 'raw'].forEach(w => {
-      strippedSearch = strippedSearch.replace(new RegExp(`\\b${w}\\b`, 'gi'), '');
-    });
-    const extraWords = strippedSearch.replace(/\s+/g, ' ').trim();
-
-    if (extraWords) {
-      const tokens = extraWords.split(' ');
-
+    // If no exact match, mathematically check for typos (e.g. "rocket" -> "rockit")
+    if (!exactBrandVariant && possibleBrandWords.length > 2) {
       for (const v of topProduct.variants) {
-        const brandClean = v.brand.toLowerCase();
-        if (brandClean === 'generic' || brandClean === 'unknown') continue;
-
-        // Exact substring check
-        if (extraWords.includes(brandClean) || brandClean.includes(extraWords)) {
-          topVariant = v;
-          foundBrand = true;
-          break;
-        }
-
-        // Fuzzy typo check (e.g., "jaas" vs "jaaz")
-        for (const token of tokens) {
-          if (token.length > 2 && getDistance(token, brandClean) <= 2) {
-            fuzzyBrandMatch = v;
+        const brand = v.brand.toLowerCase();
+        if (brand === 'generic' || brand === 'unknown') continue;
+        for (const token of searchTokens) {
+          if (token.length > 2 && getDistance(token, brand) <= 2) {
+            fuzzyBrandVariant = v;
+            break;
           }
         }
+        if (fuzzyBrandVariant) break;
       }
     }
 
-    // If they typed a brand but we couldn't find an exact match, offer the fuzzy match or Generic
-    if (!foundBrand && extraWords.length > 2 && topProduct.variants.length > 0) {
-      let s, bestStore;
-      
-      if (fuzzyBrandMatch) {
-        s = fuzzyBrandMatch.sizes[0];
-        bestStore = s?.stores[0];
+    // Helper to generate line items
+    const getVariantLineItems = (variant: any) => {
+      if (!variant || !variant.sizes || variant.sizes.length === 0) return [];
+
+      const normalizedDbSizes = variant.sizes.map((s: any) => {
+        let u = s.size_unit.toLowerCase();
+        let val = s.size_value;
+        let mappedUnit = UNIT_MAP[u] || 'pc';
+        if (['kg', 'l'].includes(u)) val *= 1000;
+        return { ...s, normalizedVal: val, mappedUnit };
+      });
+
+      let validSizes = normalizedDbSizes.filter((s: any) => s.mappedUnit === targetUnit);
+      if (validSizes.length === 0) validSizes = normalizedDbSizes;
+
+      validSizes.sort((a: any, b: any) => b.normalizedVal - a.normalizedVal);
+      const smallestAvailable = validSizes[validSizes.length - 1];
+      const selectedSizes = [];
+
+      let remaining = targetQty;
+      if (targetQty <= smallestAvailable.normalizedVal) {
+        selectedSizes.push(smallestAvailable);
       } else {
-        s = topVariant.sizes[0]; // fallback to generic
-        bestStore = s?.stores[0];
+        for (const size of validSizes) {
+          while (remaining >= size.normalizedVal) {
+            selectedSizes.push(size);
+            remaining -= size.normalizedVal;
+          }
+        }
+        if (remaining > 0) selectedSizes.push(smallestAvailable);
       }
-      
-      const suggestedItemsToAdd = [];
-      if (bestStore) {
-        const suggestedVariant = fuzzyBrandMatch || topVariant;
-        suggestedItemsToAdd.push({
-          id: `${topProduct.key}-${suggestedVariant.variant_label}-${s.sizeKey}-${bestStore.name}-${bestStore.price}`,
+
+      const lineItemsToAdd: any[] = [];
+      selectedSizes.forEach(size => {
+        const bestStore = size.stores[0];
+        if (!bestStore) return;
+        lineItemsToAdd.push({
+          id: `${topProduct.key}-${variant.variant_label}-${size.sizeKey}-${bestStore.name}-${bestStore.price}`,
           productKey: topProduct.key,
-          sizeKey: s.sizeKey,
+          sizeKey: size.sizeKey,
           title: topProduct.title,
-          variantLabel: suggestedVariant.variant_label,
-          sizeLabel: formatNormalizedUnit(s.size_value, s.size_unit),
+          variantLabel: variant.variant_label,
+          sizeLabel: formatNormalizedUnit(size.size_value, size.size_unit),
           price: bestStore.price,
           storeName: bestStore.name,
           storeUrl: bestStore.url,
@@ -368,96 +361,65 @@ export async function processSmartList(listText: string) {
           imageUrl: bestStore.image_url || topProduct.image_url,
           qty: 1
         });
-      }
-
-      const promptMsg = fuzzyBrandMatch 
-        ? `Did you mean ${fuzzyBrandMatch.brand}? Add ${fuzzyBrandMatch.variant_label}?`
-        : `Couldn't find brand "${extraWords}". Add ${topVariant.variant_label} instead?`;
-
-      return {
-        items: [],
-        summaryItem: {
-          line,
-          status: 'miss',
-          msg: promptMsg,
-          suggestedItems: suggestedItemsToAdd
-        }
-      };
-    }
-
-    if (!topVariant || !topVariant.sizes || topVariant.sizes.length === 0) {
-      return { items: [], summaryItem: { line, status: 'miss', msg: 'Out of stock everywhere' } };
-    }
-
-    const normalizedDbSizes = topVariant.sizes.map((s: any) => {
-      let u = s.size_unit.toLowerCase();
-      let val = s.size_value;
-      let mappedUnit = UNIT_MAP[u] || 'pc';
-      
-      if (['kg', 'l'].includes(u)) val *= 1000;
-      return { ...s, normalizedVal: val, mappedUnit };
-    });
-
-    let validSizes = normalizedDbSizes.filter((s: any) => s.mappedUnit === targetUnit);
-    let status = 'success';
-    let msg = 'Added perfectly';
-
-    if (validSizes.length === 0) {
-      validSizes = normalizedDbSizes;
-      targetQty = 1;
-      status = 'auto-adjusted';
-      msg = `Unit mismatch. Added 1 ${formatNormalizedUnit(validSizes[0].size_value, validSizes[0].size_unit)} instead.`;
-    }
-
-    validSizes.sort((a: any, b: any) => b.normalizedVal - a.normalizedVal);
-    const smallestAvailable = validSizes[validSizes.length - 1];
-    const selectedSizes = [];
-
-    if (targetQty <= smallestAvailable.normalizedVal) {
-      selectedSizes.push(smallestAvailable);
-      if (targetQty < smallestAvailable.normalizedVal) {
-        status = 'auto-adjusted';
-        msg = `Substituted with smallest available (${formatNormalizedUnit(smallestAvailable.size_value, smallestAvailable.size_unit)})`;
-      }
-    } else {
-      let remaining = targetQty;
-      for (const size of validSizes) {
-        while (remaining >= size.normalizedVal) {
-          selectedSizes.push(size);
-          remaining -= size.normalizedVal;
-        }
-      }
-      if (remaining > 0) {
-        selectedSizes.push(smallestAvailable);
-        status = 'auto-adjusted';
-        msg = `Combined sizes to approximate requested quantity.`;
-      }
-    }
-
-    const lineItemsToAdd: any[] = [];
-    selectedSizes.forEach(size => {
-      const bestStore = size.stores[0];
-      if (!bestStore) return;
-      
-      lineItemsToAdd.push({
-        id: `${topProduct.key}-${topVariant.variant_label}-${size.sizeKey}-${bestStore.name}-${bestStore.price}`,
-        productKey: topProduct.key,
-        sizeKey: size.sizeKey,
-        title: topProduct.title,
-        variantLabel: topVariant.variant_label,
-        sizeLabel: formatNormalizedUnit(size.size_value, size.size_unit),
-        price: bestStore.price,
-        storeName: bestStore.name,
-        storeUrl: bestStore.url,
-        listingTitle: bestStore.listing_title,
-        imageUrl: bestStore.image_url || topProduct.image_url,
-        qty: 1
       });
-    });
+      return lineItemsToAdd;
+    };
 
+    // --- OUTCOME ROUTING ---
+
+    // Case 1: Brand is a typo (e.g. "rocket" -> "rockit") -> Give 3 options
+    if (!exactBrandVariant && fuzzyBrandVariant) {
+        return {
+           items: [],
+           summaryItem: {
+             line,
+             status: 'suggestion',
+             msg: `Did you mean ${fuzzyBrandVariant.brand} ${topProduct.title}?`,
+             choices: [
+               { label: `Add ${fuzzyBrandVariant.brand}`, items: getVariantLineItems(fuzzyBrandVariant) },
+               { label: `Add Generic`, items: getVariantLineItems(genericVariant) }
+             ]
+           }
+        };
+    }
+
+    // Case 2: They typed a brand we completely do not have (e.g. "Dole") -> Offer Generic
+    if (!exactBrandVariant && !fuzzyBrandVariant && possibleBrandWords.length > 2) {
+        return {
+           items: [],
+           summaryItem: {
+             line,
+             status: 'suggestion',
+             msg: `Couldn't find brand "${possibleBrandWords}". Add Generic ${topProduct.title}?`,
+             choices: [
+               { label: `Add Generic`, items: getVariantLineItems(genericVariant) }
+             ]
+           }
+        };
+    }
+
+    // Case 3: Base is wrong/fuzzy (e.g. "applee" or "rockit applee") -> Give 2 options (Yes / Discard)
+    if (!isBaseExact) {
+       const targetVariant = exactBrandVariant || genericVariant;
+       const brandLabel = targetVariant.brand !== 'Generic' && targetVariant.brand !== 'Unknown' ? `${targetVariant.brand} ` : '';
+       return {
+          items: [],
+          summaryItem: {
+             line,
+             status: 'suggestion',
+             msg: `Did you mean ${brandLabel}${topProduct.title}?`,
+             choices: [
+               { label: `Yes, add it`, items: getVariantLineItems(targetVariant) }
+             ]
+          }
+       };
+    }
+
+    // Case 4: Everything is exact (e.g. "apple" or "rockit apple") -> Silent Add
+    const targetVariant = exactBrandVariant || genericVariant;
     return {
-      items: lineItemsToAdd,
-      summaryItem: { line, status, msg }
+       items: getVariantLineItems(targetVariant),
+       summaryItem: { line, status: 'success', msg: 'Added perfectly' }
     };
   };
 

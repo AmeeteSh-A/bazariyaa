@@ -448,9 +448,9 @@ export default function GrocerySearch({
               let icon = <CheckIcon size={18} color="var(--green)" />;
               let msgColor = 'var(--faint)';
               
-              const isSuggestion = item.suggestedItems && item.suggestedItems.length > 0;
+              const hasChoices = item.choices && item.choices.length > 0;
 
-              if (isSuggestion) {
+              if (hasChoices) {
                 bg = '#FFF8EB'; borderColor = '#F6AD55'; icon = <span style={{ fontSize: 16 }}>🤔</span>; msgColor = '#DD6B20';
               } else if (item.status === 'miss') {
                 bg = '#FFF5F5'; borderColor = '#FEB2B2'; icon = <span style={{ fontSize: 16 }}>❌</span>; msgColor = 'var(--red)';
@@ -468,28 +468,31 @@ export default function GrocerySearch({
                     <div style={{ paddingLeft: 12 }}>{icon}</div>
                   </div>
 
-                  {isSuggestion && (
-                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${borderColor}`, display: 'flex', gap: 8 }}>
+                  {hasChoices && (
+                    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${borderColor}`, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {item.choices.map((choice: any, cIdx: number) => (
+                        <button 
+                          key={cIdx}
+                          onClick={() => {
+                            choice.items.forEach((i: any) => addToCart(i));
+                            const newSummary = [...listSummary];
+                            newSummary[idx] = { ...item, status: 'success', msg: `${choice.label} applied perfectly.`, choices: null };
+                            setListSummary(newSummary);
+                          }} 
+                          style={{ flex: 1, padding: '8px 4px', background: 'var(--violet)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          {choice.label}
+                        </button>
+                      ))}
                       <button 
                         onClick={() => {
-                          item.suggestedItems.forEach((i: any) => addToCart(i));
                           const newSummary = [...listSummary];
-                          newSummary[idx] = { ...item, status: 'success', msg: 'Suggestion added perfectly.', suggestedItems: null };
+                          newSummary[idx] = { ...item, status: 'miss', msg: 'Item discarded.', choices: null };
                           setListSummary(newSummary);
                         }} 
-                        style={{ flex: 1, padding: '8px 0', background: 'var(--violet)', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                        style={{ padding: '8px 12px', background: 'transparent', color: 'var(--red, #E22028)', border: '1px solid var(--red, #E22028)', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
                       >
-                        Yes, add it
-                      </button>
-                      <button 
-                        onClick={() => {
-                          const newSummary = [...listSummary];
-                          newSummary[idx] = { ...item, status: 'miss', msg: 'Item ignored.', suggestedItems: null };
-                          setListSummary(newSummary);
-                        }} 
-                        style={{ flex: 1, padding: '8px 0', background: 'transparent', color: 'var(--red, #E22028)', border: '1px solid var(--red, #E22028)', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-                      >
-                        No
+                        Discard
                       </button>
                     </div>
                   )}
