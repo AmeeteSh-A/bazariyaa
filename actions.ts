@@ -293,8 +293,60 @@ export async function processSmartList(listText: string) {
     }
 
     const topProduct = bestMatch;
-    const topVariant = topProduct.variants[0];
+    let topVariant = topProduct.variants[0]; 
+    let foundBrand = false;
+
+    for (const v of topProduct.variants) {
+      const brandClean = v.brand.toLowerCase();
+      if (brandClean !== 'generic' && brandClean !== 'unknown' && searchClean.includes(brandClean)) {
+        topVariant = v;
+        foundBrand = true;
+        break;
+      }
+    }
+
+    const titleClean = topProduct.title.toLowerCase();
+    let strippedSearch = searchClean.replace(titleClean, '');
     
+    ['fresh', 'frozen', 'organic', 'raw'].forEach(w => {
+      strippedSearch = strippedSearch.replace(new RegExp(`\\b${w}\\b`, 'gi'), '');
+    });
+    
+    const extraWords = strippedSearch.replace(/\s+/g, ' ').trim();
+
+    if (!foundBrand && extraWords.length > 2 && topProduct.variants.length > 0) {
+      const s = topVariant.sizes[0];
+      const bestStore = s?.stores[0];
+      
+      const suggestedItemsToAdd = [];
+      if (bestStore) {
+        suggestedItemsToAdd.push({
+          id: `${topProduct.key}-${topVariant.variant_label}-${s.sizeKey}-${bestStore.name}-${bestStore.price}`,
+          productKey: topProduct.key,
+          sizeKey: s.sizeKey,
+          title: topProduct.title,
+          variantLabel: topVariant.variant_label,
+          sizeLabel: formatNormalizedUnit(s.size_value, s.size_unit),
+          price: bestStore.price,
+          storeName: bestStore.name,
+          storeUrl: bestStore.url,
+          listingTitle: bestStore.listing_title,
+          imageUrl: bestStore.image_url || topProduct.image_url,
+          qty: 1 
+        });
+      }
+
+      return {
+        items: [],
+        summaryItem: {
+          line,
+          status: 'miss',
+          msg: `Couldn't find "${extraWords}". Add ${topVariant.variant_label} instead?`,
+          suggestedItems: suggestedItemsToAdd
+        }
+      };
+    }
+
     if (!topVariant || !topVariant.sizes || topVariant.sizes.length === 0) {
       return { items: [], summaryItem: { line, status: 'miss', msg: 'Out of stock everywhere' } };
     }
