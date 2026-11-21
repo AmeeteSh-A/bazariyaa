@@ -144,7 +144,12 @@ export default function GrocerySearch({
       }
     }
 
-    if (isExactSearch) {
+    const allTokensMatchSection = sections.some((s: any) => {
+      const titleLower = String(s.title || '').toLowerCase();
+      return qTokens.length > 0 && qTokens.every((t) => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s?\\b`, 'i').test(titleLower));
+    });
+
+    if (isExactSearch || allTokensMatchSection) {
       return { brand: null, fuzzyFrom: null, correctedQuery: null };
     }
 
@@ -185,21 +190,12 @@ export default function GrocerySearch({
     if (activeBrand !== 'All') l = l.filter(s => s.variants?.some((v: any) => v.brand.toLowerCase() === activeBrand.toLowerCase()));
     if (activeForm !== 'All') l = l.filter(s => s.variants?.some((v: any) => v.form.toLowerCase() === activeForm.toLowerCase()));
 
-    const targetBrand = brandMatch.brand?.toLowerCase();
-
     return l.sort((a, b) => {
       if (activeType !== 'All') {
         const aMatch = a.title.toLowerCase() === activeType.toLowerCase();
         const bMatch = b.title.toLowerCase() === activeType.toLowerCase();
         if (aMatch && !bMatch) return -1;
         if (!aMatch && bMatch) return 1;
-      }
-
-      if (sort === 'relevance' && targetBrand) {
-        const aHasBrand = a.variants?.some((v: any) => v.brand.toLowerCase() === targetBrand);
-        const bHasBrand = b.variants?.some((v: any) => v.brand.toLowerCase() === targetBrand);
-        if (aHasBrand && !bHasBrand) return -1;
-        if (!aHasBrand && bHasBrand) return 1;
       }
 
       const aBest = a.variants?.[0]?.sizes?.[0]?.stores?.[0]?.price || 0;
@@ -211,8 +207,9 @@ export default function GrocerySearch({
         default: return aBest - bBest;
       }
     });
-  }, [searchResults?.sections, activeBrand, activeForm, activeType, sort, brandMatch.brand]);
+  }, [searchResults?.sections, activeBrand, activeForm, activeType, sort]);
 
+  
 
   useEffect(() => {
     const observer = new IntersectionObserver(
