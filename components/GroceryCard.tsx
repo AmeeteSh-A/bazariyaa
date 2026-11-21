@@ -5,10 +5,10 @@ import { inr, formatNormalizedUnit } from '@/utils/format';
 import { HeartIcon } from './Icons';
 import { useCart } from './Cart';
 
-type GroceryStore = { name: string; listing_title: string; price: number; inStock: boolean; url: string; image_url: string; };
-type GrocerySize = { sizeKey: string; size_value: number; size_unit: string; from_unit_price: number; stores: GroceryStore[]; };
-type GroceryVariant = { brand: string; variant: string; form: string; variant_label: string; sizes: GrocerySize[]; };
-type PostgresGroceryProduct = {
+export type GroceryStore = { name: string; listing_title: string; price: number; inStock: boolean; url: string; image_url: string; };
+export type GrocerySize = { sizeKey: string; size_value: number; size_unit: string; from_unit_price: number; stores: GroceryStore[]; };
+export type GroceryVariant = { brand: string; variant: string; form: string; variant_label: string; sizes: GrocerySize[]; };
+export type PostgresGroceryProduct = {
   key: string;
   title: string;
   image_url: string;
@@ -37,7 +37,7 @@ function findBrandVariantIndex(variants: GroceryVariant[], preferredBrand?: stri
   return idx >= 0 ? idx : 0;
 }
 
-function formatUnitPrice(price: number, size: GrocerySize) {
+export function formatUnitPrice(price: number, size: GrocerySize) {
   const unitPrice = size.size_value > 0 ? price / size.size_value : size.from_unit_price;
   const decimals = unitPrice >= 1 ? 2 : unitPrice >= 0.01 ? 3 : 4;
   const formatted = unitPrice
@@ -50,10 +50,12 @@ function formatUnitPrice(price: number, size: GrocerySize) {
 
 export function GroceryCard({
   p,
-  preferredBrand
+  preferredBrand,
+  onExpand
 }: {
   p: PostgresGroceryProduct;
   preferredBrand?: string | null;
+  onExpand?: (p: PostgresGroceryProduct) => void;
 }) {
   const { addToCart } = useCart();
   const [wished, setWished] = useState(false);
@@ -97,6 +99,13 @@ export function GroceryCard({
   const isTwoStores = storeCount === 2;
   const isDense = storeCount > 3 || p.variants.length > 3 || sortedSizes.length > 4;
   const isLowestSelected = storeCount > 1 && selectedStoreIndex === 0;
+
+  const hasMoreBrands = p.variants.length > 3;
+  const visibleVariantIndices = hasMoreBrands
+    ? variantIdx >= 3
+      ? [variantIdx, 0, 1]
+      : [0, 1, 2]
+    : p.variants.map((_, i) => i);
 
   const handleAddToCart = () => {
     addToCart({
@@ -167,6 +176,20 @@ export function GroceryCard({
         <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
             <h3 className="gcard__title" style={{ margin: 0 }}>{p.title}</h3>
+            {onExpand && (
+              <button
+                type="button"
+                className="gcard__expand-btn"
+                onClick={() => onExpand(p)}
+                title={`View all ${p.title} options`}
+                aria-label={`View all ${p.title} options`}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 12h14" />
+                  <path d="m12 5 7 7-7 7" />
+                </svg>
+              </button>
+            )}
             {p.variants.length === 1 && currentVariant.brand && currentVariant.brand.toLowerCase() !== 'generic' && currentVariant.brand.toLowerCase() !== 'unknown' && (
               <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--faint)', background: 'var(--canvas)', padding: '2px 8px', borderRadius: 999 }}>
                 {currentVariant.variant_label}
@@ -176,18 +199,39 @@ export function GroceryCard({
 
           {p.variants.length > 1 && (
             <div className="row" style={{ gap: 6, marginTop: isDense ? 8 : 10, flexWrap: 'wrap' }}>
-              {p.variants.map((v, idx) => (
+              {visibleVariantIndices.map((idx) => {
+                const v = p.variants[idx];
+                return (
+                  <button
+                    key={`${v.brand}-${v.variant}-${v.form}-${idx}`}
+                    type="button"
+                    className="chip chip--soft"
+                    aria-pressed={idx === variantIdx}
+                    onClick={() => { setVariantIdx(idx); setSizeIdx(0); }}
+                    style={{ padding: isDense ? '3px 9px' : '4px 11px', fontSize: 12 }}
+                  >
+                    {v.variant_label}
+                  </button>
+                );
+              })}
+              {hasMoreBrands && onExpand && (
                 <button
-                  key={`${v.brand}-${v.variant}-${v.form}`}
                   type="button"
-                  className="chip chip--soft"
-                  aria-pressed={idx === variantIdx}
-                  onClick={() => { setVariantIdx(idx); setSizeIdx(0); }}
-                  style={{ padding: isDense ? '3px 9px' : '4px 11px', fontSize: 12 }}
+                  className="chip"
+                  onClick={() => onExpand(p)}
+                  style={{
+                    padding: isDense ? '3px 10px' : '4px 12px',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: 'var(--violet)',
+                    borderColor: 'var(--violet)',
+                    color: '#fff',
+                    cursor: 'pointer'
+                  }}
                 >
-                  {v.variant_label}
+                  More
                 </button>
-              ))}
+              )}
             </div>
           )}
 
@@ -402,6 +446,282 @@ export function GroceryCard({
           rel="noreferrer"
           className="btn btn--primary"
           style={{ flex: 1, padding: '10px 0', fontSize: 13, fontWeight: 600, textDecoration: 'none', borderRadius: 10 }}
+        >
+          Buy Now
+        </a>
+      </div>
+    </article>
+  );
+}
+
+export function GroceryGridCard({
+  productKey,
+  title,
+  fallbackImage,
+  variant,
+  size
+}: {
+  productKey: string;
+  title: string;
+  fallbackImage: string;
+  variant: GroceryVariant;
+  size: GrocerySize;
+}) {
+  const { addToCart } = useCart();
+  const [wished, setWished] = useState(false);
+  const [selectedStoreIndex, setSelectedStoreIndex] = useState(0);
+  const [hoveredStoreIndex, setHoveredStoreIndex] = useState<number | null>(null);
+  const [showAllStores, setShowAllStores] = useState(false);
+
+  const dynamicStores = [...(size.stores || [])].sort((a, b) => a.price - b.price);
+
+  useEffect(() => {
+    setSelectedStoreIndex(0);
+    setHoveredStoreIndex(null);
+    setShowAllStores(false);
+  }, [productKey, variant.brand, variant.form, size.sizeKey]);
+
+  if (dynamicStores.length === 0) return null;
+
+  const activeStore = dynamicStores[selectedStoreIndex] || dynamicStores[0];
+  const displayImage = activeStore.image_url || fallbackImage;
+  const storeCount = dynamicStores.length;
+  const isSingleStore = storeCount === 1;
+  const isLowestSelected = storeCount > 1 && selectedStoreIndex === 0;
+  const hiddenStoreCount = storeCount > 4 && !showAllStores ? storeCount - 4 : 0;
+  const visibleStores = showAllStores ? dynamicStores : dynamicStores.slice(0, 4);
+
+  const handleAddToCart = () => {
+    addToCart({
+      id: `${productKey}-${variant.variant_label}-${size.sizeKey}-${activeStore.name}-${activeStore.price}`,
+      productKey,
+      sizeKey: size.sizeKey,
+      title,
+      variantLabel: variant.variant_label,
+      sizeLabel: formatNormalizedUnit(size.size_value, size.size_unit),
+      price: activeStore.price,
+      storeName: activeStore.name,
+      storeUrl: activeStore.url,
+      listingTitle: activeStore.listing_title,
+      imageUrl: displayImage
+    });
+  };
+
+  return (
+    <article className="card card--hover ggrid-card">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <a
+          href={activeStore.url || '#'}
+          target="_blank"
+          rel="noreferrer"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            padding: '4px 8px',
+            fontSize: 10.5,
+            fontWeight: 600,
+            lineHeight: 1.2,
+            textDecoration: 'none',
+            color: 'var(--violet)',
+            background: '#F3F0FE',
+            border: '1px solid rgba(94, 53, 177, 0.16)',
+            borderRadius: 7,
+            whiteSpace: 'nowrap'
+          }}
+        >
+          <span>Go to product page</span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M5 12h14" />
+            <path d="m12 5 7 7-7 7" />
+          </svg>
+        </a>
+
+        <div className="ggrid-card__img">
+          {displayImage ? (
+            <img src={displayImage} alt={`${variant.variant_label} ${title}`} loading="lazy" />
+          ) : (
+            <span className="emoji" style={{ fontSize: 44 }} aria-hidden="true">🛒</span>
+          )}
+          <button type="button" className={'icon-btn gcard__heart' + (wished ? ' icon-btn--on' : '')} onClick={() => setWished(w => !w)}>
+            <HeartIcon size={15} filled={wished} />
+          </button>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+        <h3 className="gcard__title" style={{ margin: 0, fontSize: 14.5 }}>{title}</h3>
+        <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+          <span
+            className="chip chip--soft"
+            style={{
+              padding: '2px 9px',
+              fontSize: 11.5,
+              background: 'var(--violet-wash)',
+              borderColor: 'var(--violet-border)',
+              color: 'var(--violet)'
+            }}
+          >
+            {variant.variant_label}
+          </span>
+          <span className="variant" aria-pressed="true" style={{ padding: '2px 9px', fontSize: 11.5 }}>
+            {formatNormalizedUnit(size.size_value, size.size_unit)}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 21, fontWeight: 700, letterSpacing: '-0.03em', lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>
+              {inr(activeStore.price)}
+            </span>
+            {isLowestSelected && (
+              <span style={{ fontSize: 9.5, fontWeight: 700, color: 'var(--green)', background: '#ECFDF5', padding: '2px 5px', borderRadius: 999, textTransform: 'uppercase' }}>
+                Lowest
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--faint)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            from <span style={{ color: '#55504A', fontWeight: 500 }}>{activeStore.name}</span>
+          </div>
+        </div>
+        <div className="info info--violet" style={{ padding: '4px 8px', flexShrink: 0 }}>
+          <b style={{ fontSize: 11.5, fontVariantNumeric: 'tabular-nums' }}>{formatUnitPrice(activeStore.price, size)}</b>
+          <span style={{ fontSize: 10 }}>Unit price</span>
+        </div>
+      </div>
+
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', color: 'var(--green)', marginBottom: 6 }}>
+          {storeCount > 1 ? `COMPARE ${storeCount} STORES` : 'AVAILABLE AT'}
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: isSingleStore ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+            gap: 6,
+            overflow: 'visible'
+          }}
+        >
+          {visibleStores.map((s, i) => {
+            const brand = getStoreBrand(s.name);
+            const isSelected = selectedStoreIndex === i;
+            const isHovered = hoveredStoreIndex === i;
+            return (
+              <div
+                key={s.url + i}
+                className={`store ${isSelected ? 'store--selected' : ''}`}
+                onClick={() => setSelectedStoreIndex(i)}
+                onMouseEnter={() => setHoveredStoreIndex(i)}
+                onMouseLeave={() => setHoveredStoreIndex(null)}
+                style={{
+                  position: 'relative',
+                  minWidth: 0,
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  overflow: 'visible',
+                  cursor: 'pointer',
+                  borderRadius: 9,
+                  padding: isSingleStore ? '8px 10px' : '6px 6px',
+                  display: 'flex',
+                  flexDirection: isSingleStore ? 'row' : 'column',
+                  alignItems: 'center',
+                  justifyContent: isSingleStore ? 'space-between' : 'center',
+                  gap: isSingleStore ? 8 : 3,
+                  transition: 'border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease',
+                  border: isSelected ? '2px solid var(--violet)' : '1px solid var(--divider)',
+                  background: isSelected ? 'var(--violet-light)' : '#fff',
+                  boxShadow: isHovered && !isSelected ? '0 3px 10px rgba(0,0,0,0.08)' : undefined,
+                  transform: isHovered ? 'translateY(-1px)' : undefined
+                }}
+              >
+                {isHovered && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 'calc(100% + 6px)',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      background: '#1F1D1A',
+                      color: '#fff',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: '4px 8px',
+                      borderRadius: 6,
+                      whiteSpace: 'nowrap',
+                      pointerEvents: 'none',
+                      zIndex: 40,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+                      fontVariantNumeric: 'tabular-nums'
+                    }}
+                  >
+                    {formatUnitPrice(s.price, size)}
+                  </div>
+                )}
+
+                <div className="row" style={{ gap: 4, justifyContent: isSingleStore ? 'flex-start' : 'center', flexWrap: 'nowrap', minWidth: 0, width: isSingleStore ? 'auto' : '100%' }}>
+                  <span className="store__logo" style={{ background: brand.bg, color: brand.color, flexShrink: 0 }}>
+                    {brand.logo}
+                  </span>
+                  <span style={{ fontSize: 10.5, fontWeight: 500, color: '#55504A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {s.name}
+                  </span>
+                </div>
+                <div
+                  className="store__price"
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    fontVariantNumeric: 'tabular-nums',
+                    flexShrink: 0,
+                    ...(!s.inStock ? { textDecoration: 'line-through', color: 'var(--faint)' } : {})
+                  }}
+                >
+                  {inr(s.price)}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {storeCount > 4 && (
+          <button
+            type="button"
+            onClick={() => setShowAllStores((prev) => !prev)}
+            style={{
+              marginTop: 6,
+              width: '100%',
+              padding: '5px 8px',
+              borderRadius: 8,
+              border: '1px dashed var(--border-hover)',
+              background: 'transparent',
+              color: 'var(--violet)',
+              fontSize: 11.5,
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            {hiddenStoreCount > 0 ? `+${hiddenStoreCount} more stores` : 'Show fewer stores'}
+          </button>
+        )}
+      </div>
+
+      <div style={{ display: 'flex', gap: 6, marginTop: 'auto', paddingTop: 4 }}>
+        <button
+          onClick={handleAddToCart}
+          className="btn btn--secondary"
+          style={{ flex: 1, padding: '8px 0', fontSize: 12.5, fontWeight: 600, background: '#F3F0FE', color: 'var(--violet)', borderRadius: 9 }}
+        >
+          Add to Cart
+        </button>
+        <a
+          href={activeStore.url || '#'}
+          target="_blank"
+          rel="noreferrer"
+          className="btn btn--primary"
+          style={{ flex: 1, padding: '8px 0', fontSize: 12.5, fontWeight: 600, textDecoration: 'none', borderRadius: 9 }}
         >
           Buy Now
         </a>
