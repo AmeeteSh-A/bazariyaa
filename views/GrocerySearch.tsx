@@ -7,12 +7,32 @@ import { Modal } from '@/components/Modal';
 import { ChevronRight, ListIcon, PinIcon, UploadIcon, CheckIcon } from '@/components/Icons';
 import type { GroceryCategory } from '@/types';
 import { useCart } from '@/components/Cart';
-import { processSmartList, extractTextFromImage } from '../actions';
+import { processSmartList, extractTextFromImage, optimizeBasket, CartOptimizationRequest } from '../actions';
 
 type Sort = 'relevance' | 'price' | 'unit' | 'discount';
 
 const SAMPLE_LIST = 'coconut 100g\napple 300g\nwatermelon 2kg\ncoriander 100g\n1 dozen eggs\nAmul butter 500g';
 const CHUNK_SIZE = 50;
+
+
+function getDistance(a: string, b: string): number {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1));
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
 
 export default function GrocerySearch({
   categories,
@@ -30,6 +50,7 @@ export default function GrocerySearch({
   const activeCatId = params.get('category') || pathParams.category;
   const activeCat = categories.find(c => c.id === activeCatId) ?? categories[0];
   const q = (params.get('q') ?? '').toLowerCase();
+  const isExactSearch = params.get('exact') === '1';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeBrand, setActiveBrand] = useState('All');
@@ -40,6 +61,7 @@ export default function GrocerySearch({
   
   const [text, setText] = useState('');
   const [isProcessingList, setIsProcessingList] = useState(false);
+  const [singleVendor, setSingleVendor] = useState(false);
   const [isExtractingText, setIsExtractingText] = useState(false);
   const [listSummary, setListSummary] = useState<any[]>([]);
   
@@ -79,7 +101,7 @@ export default function GrocerySearch({
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    updateUrl({ q: searchQuery.trim(), brand: null, form: null, type: null, sort: 'relevance' });
+    updateUrl({ q: searchQuery.trim(), brand: null, form: null, type: null, exact: null, sort: 'relevance' });
   };
 
   const sections = searchResults?.sections || [];
@@ -88,10 +110,82 @@ export default function GrocerySearch({
   const forms = facets.form || [];
   const types = facets.type || [];
 
+  const brandMatch = useMemo(() => {
+    if (activeBrand !== 'All') {
+      return { brand: activeBrand, fuzzyFrom: null as string | null, correctedQuery: null as string | null };
+    }
+    if (!q) {
+      return { brand: null as string | null, fuzzyFrom: null as string | null, correctedQuery: null as string | null };
+    }
+
+    const sectionKeys = new Set(
+      sections.flatMap((s: any) => [String(s.key || '').toLowerCase(), String(s.title || '').toLowerCase()]).filter(Boolean)
+    );
+
+    const allBrands = Array.from(
+      new Set([
+        ...brands.map((b: any) => String(b.value)),
+        ...sections.flatMap((s: any) => (s.variants || []).map((v: any) => String(v.brand)))
+      ])
+    ).filter((b) => {
+      const lower = b.toLowerCase();
+      return lower && lower !== 'generic' && lower !== 'unknown';
+    });
+
+    const distinctBrands = allBrands.filter((b) => !sectionKeys.has(b.toLowerCase()));
+    const qLower = q.toLowerCase();
+    const qTokens = qLower.split(/\s+/).filter(Boolean);
+
+    for (const b of distinctBrands) {
+      const bLower = b.toLowerCase();
+      const exactRegex = new RegExp(`\\b${bLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+      if (exactRegex.test(qLower)) {
+        return { brand: b, fuzzyFrom: null, correctedQuery: null };
+      }
+    }
+
+    if (isExactSearch) {
+      return { brand: null, fuzzyFrom: null, correctedQuery: null };
+    }
+
+    let bestBrand: string | null = null;
+    let bestToken: string | null = null;
+    let bestDist = Infinity;
+
+    for (const token of qTokens) {
+      if (token.length < 3) continue;
+      if (sectionKeys.has(token)) continue;
+
+      for (const b of distinctBrands) {
+        const bLower = b.toLowerCase();
+        const maxAllowed = bLower.length <= 4 ? 1 : 2;
+        const dist = getDistance(token, bLower);
+        if (dist > 0 && dist <= maxAllowed && dist < bestDist) {
+          bestDist = dist;
+          bestBrand = b;
+          bestToken = token;
+        }
+      }
+    }
+
+    if (bestBrand && bestToken) {
+      const correctedQuery = q.replace(
+        new RegExp(`\\b${bestToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i'),
+        bestBrand.toLowerCase()
+      );
+      return { brand: bestBrand, fuzzyFrom: q, correctedQuery };
+    }
+
+    return { brand: null, fuzzyFrom: null, correctedQuery: null };
+  }, [activeBrand, q, brands, sections, isExactSearch]);
+
+
   const products = useMemo(() => {
     let l = [...sections];
     if (activeBrand !== 'All') l = l.filter(s => s.variants?.some((v: any) => v.brand.toLowerCase() === activeBrand.toLowerCase()));
     if (activeForm !== 'All') l = l.filter(s => s.variants?.some((v: any) => v.form.toLowerCase() === activeForm.toLowerCase()));
+
+    const targetBrand = brandMatch.brand?.toLowerCase();
 
     return l.sort((a, b) => {
       if (activeType !== 'All') {
@@ -99,6 +193,13 @@ export default function GrocerySearch({
         const bMatch = b.title.toLowerCase() === activeType.toLowerCase();
         if (aMatch && !bMatch) return -1;
         if (!aMatch && bMatch) return 1;
+      }
+
+      if (sort === 'relevance' && targetBrand) {
+        const aHasBrand = a.variants?.some((v: any) => v.brand.toLowerCase() === targetBrand);
+        const bHasBrand = b.variants?.some((v: any) => v.brand.toLowerCase() === targetBrand);
+        if (aHasBrand && !bHasBrand) return -1;
+        if (!aHasBrand && bHasBrand) return 1;
       }
 
       const aBest = a.variants?.[0]?.sizes?.[0]?.stores?.[0]?.price || 0;
@@ -110,7 +211,8 @@ export default function GrocerySearch({
         default: return aBest - bBest;
       }
     });
-  }, [searchResults?.sections, activeBrand, activeForm, activeType, sort]);
+  }, [searchResults?.sections, activeBrand, activeForm, activeType, sort, brandMatch.brand]);
+
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -135,7 +237,30 @@ export default function GrocerySearch({
     const res = await processSmartList(t);
     
     if (res?.items) {
-      res.items.forEach((item: any) => addToCart(item));
+      let finalItems = res.items;
+
+      if (singleVendor && res.items.length > 0) {
+        const groupedReq: Record<string, CartOptimizationRequest> = {};
+        res.items.forEach((i: any) => {
+          const hash = `${i.productKey}-${i.variantLabel}-${i.sizeKey}`;
+          if (!groupedReq[hash]) {
+            groupedReq[hash] = {
+              key: i.productKey || i.title.toLowerCase(),
+              brand: i.variantLabel.split(' ')[0],
+              sizeKey: i.sizeKey || i.sizeLabel.replace(/\s+/g, ''),
+              qty: 0
+            };
+          }
+          groupedReq[hash].qty += (i.qty || 1);
+        });
+
+        const optRes = await optimizeBasket(Object.values(groupedReq), 'single_vendor');
+        if (optRes?.optimizedCart && optRes.optimizedCart.length > 0) {
+          finalItems = optRes.optimizedCart;
+        }
+      }
+
+      finalItems.forEach((item: any) => addToCart(item));
       setListSummary(res.summary || []);
       setModal('summary'); 
     }
@@ -330,12 +455,43 @@ export default function GrocerySearch({
             </label>
           </div>
 
+          {brandMatch.correctedQuery && brandMatch.fuzzyFrom && (
+            <div style={{ marginBottom: 16, fontSize: 13.5, lineHeight: 1.6 }}>
+              <div>
+                <span className="muted">Showing results for </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery(brandMatch.correctedQuery!);
+                    updateUrl({ q: brandMatch.correctedQuery, brand: null, form: null, type: null, exact: null, sort: 'relevance' });
+                  }}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--violet)', fontWeight: 700, fontSize: 'inherit' }}
+                >
+                  {brandMatch.correctedQuery}
+                </button>
+              </div>
+              <div style={{ fontSize: 12.5 }}>
+                <span className="muted">Search instead for </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery(brandMatch.fuzzyFrom!);
+                    updateUrl({ q: brandMatch.fuzzyFrom, brand: null, form: null, type: null, exact: '1', sort: 'relevance' });
+                  }}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--violet)', textDecoration: 'underline', fontSize: 'inherit' }}
+                >
+                  {brandMatch.fuzzyFrom}
+                </button>
+              </div>
+            </div>
+          )}
+
           {products.length ? (
             <div style={{ display: 'grid', gap: 12 }}>
               <div ref={gridTopRef} style={{ scrollMarginTop: '20px' }} />
               
               {visibleProducts.map((p: any, idx: number) => (
-                <GroceryCard key={`${p.key}-${idx}`} p={p} />
+                <GroceryCard key={`${p.key}-${idx}`} p={p} preferredBrand={brandMatch.brand} />
               ))}
             
               {visibleCount < products.length && <div ref={observerTarget} style={{ height: 20 }} />}
@@ -424,6 +580,20 @@ export default function GrocerySearch({
               Load Sample
             </button>
           </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16, padding: '12px 14px', borderRadius: 12, border: '1px solid var(--divider)', background: singleVendor ? 'var(--violet-light, #F3F0FE)' : '#fff', cursor: 'pointer' }}>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 600, color: singleVendor ? 'var(--violet)' : 'inherit' }}>Single vendor</div>
+              <div style={{ fontSize: 12, color: 'var(--faint)' }}>Optimize list into one store to save on delivery</div>
+            </div>
+            <input 
+              type="checkbox" 
+              checked={singleVendor} 
+              onChange={(e) => setSingleVendor(e.target.checked)} 
+              disabled={isProcessingList || isExtractingText}
+              style={{ width: 18, height: 18, accentColor: 'var(--violet, #5E35B1)', cursor: 'pointer' }}
+            />
+          </label>
 
           <div style={{ marginTop: 16 }}>
             <button 

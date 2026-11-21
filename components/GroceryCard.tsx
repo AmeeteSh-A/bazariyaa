@@ -28,12 +28,32 @@ function getStoreBrand(name: string) {
   return { logo: name[0].toUpperCase(), bg: 'var(--violet)' };
 }
 
-export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
+function findBrandVariantIndex(variants: GroceryVariant[], preferredBrand?: string | null) {
+  if (!preferredBrand) return 0;
+  const target = preferredBrand.toLowerCase();
+  const idx = variants.findIndex(
+    (v) => v.brand.toLowerCase() === target || v.variant_label.toLowerCase() === target
+  );
+  return idx >= 0 ? idx : 0;
+}
+
+export function GroceryCard({
+  p,
+  preferredBrand
+}: {
+  p: PostgresGroceryProduct;
+  preferredBrand?: string | null;
+}) {
   const { addToCart } = useCart();
   const [wished, setWished] = useState(false);
-  const [variantIdx, setVariantIdx] = useState(0);
+  const [variantIdx, setVariantIdx] = useState(() => findBrandVariantIndex(p.variants, preferredBrand));
   const [sizeIdx, setSizeIdx] = useState(0);
   const [selectedStoreIndex, setSelectedStoreIndex] = useState(0);
+
+  useEffect(() => {
+    setVariantIdx(findBrandVariantIndex(p.variants, preferredBrand));
+    setSizeIdx(0);
+  }, [p.key, preferredBrand]);
 
   const currentVariant = p.variants[variantIdx] || p.variants[0];
 
@@ -62,6 +82,8 @@ export function GroceryCard({ p }: { p: PostgresGroceryProduct }) {
   const handleAddToCart = () => {
     addToCart({
       id: `${p.key}-${currentVariant.variant_label}-${currentSize.sizeKey}-${activeStore.name}-${activeStore.price}`,
+      productKey: p.key,
+      sizeKey: currentSize.sizeKey,
       title: p.title,
       variantLabel: currentVariant.variant_label,
       sizeLabel: formatNormalizedUnit(currentSize.size_value, currentSize.size_unit),

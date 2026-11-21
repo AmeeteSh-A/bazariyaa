@@ -9,11 +9,12 @@ export const revalidate = 60;
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string }>;
+  searchParams: Promise<{ q?: string; category?: string; exact?: string }>;
 }) {
   const params = await searchParams;
   const q = params.q || '';
   const category = params.category || '';
+  const exact = params.exact === '1';
   
   const supabase = serverSupabase();
   
@@ -26,11 +27,11 @@ export default async function Page({
       .select('*')
       .order('count', { ascending: false });
 
-    
     const searchTerm = q || category || '';
     
     const rpcPromise = supabase.rpc('search_grocery', {
-      search_q: searchTerm
+      search_q: searchTerm,
+      exact_mode: exact
     });
 
     const [catsRes, rpcRes] = await Promise.all([catsPromise, rpcPromise]);
