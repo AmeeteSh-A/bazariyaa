@@ -185,6 +185,12 @@ export default function GrocerySearch({
   }, [activeBrand, q, brands, sections, isExactSearch]);
 
 
+  const activeCorrectedQuery = !isExactSearch
+    ? (searchResults?.interpreted?.corrected_query || brandMatch.correctedQuery)
+    : null;
+  const activeFuzzyFrom = activeCorrectedQuery ? q : null;
+
+
   const products = useMemo(() => {
     let l = [...sections];
     if (activeBrand !== 'All') l = l.filter(s => s.variants?.some((v: any) => v.brand.toLowerCase() === activeBrand.toLowerCase()));
@@ -209,7 +215,7 @@ export default function GrocerySearch({
     });
   }, [searchResults?.sections, activeBrand, activeForm, activeType, sort]);
 
-  
+
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -452,19 +458,19 @@ export default function GrocerySearch({
             </label>
           </div>
 
-          {brandMatch.correctedQuery && brandMatch.fuzzyFrom && (
+          {activeCorrectedQuery && activeFuzzyFrom && (
             <div style={{ marginBottom: 16, fontSize: 13.5, lineHeight: 1.6 }}>
               <div>
                 <span className="muted">Showing results for </span>
                 <button
                   type="button"
                   onClick={() => {
-                    setSearchQuery(brandMatch.correctedQuery!);
-                    updateUrl({ q: brandMatch.correctedQuery, brand: null, form: null, type: null, exact: null, sort: 'relevance' });
+                    setSearchQuery(activeCorrectedQuery);
+                    updateUrl({ q: activeCorrectedQuery, brand: null, form: null, type: null, exact: null, sort: 'relevance' });
                   }}
                   style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--violet)', fontWeight: 700, fontSize: 'inherit' }}
                 >
-                  {brandMatch.correctedQuery}
+                  {activeCorrectedQuery}
                 </button>
               </div>
               <div style={{ fontSize: 12.5 }}>
@@ -472,12 +478,12 @@ export default function GrocerySearch({
                 <button
                   type="button"
                   onClick={() => {
-                    setSearchQuery(brandMatch.fuzzyFrom!);
-                    updateUrl({ q: brandMatch.fuzzyFrom, brand: null, form: null, type: null, exact: '1', sort: 'relevance' });
+                    setSearchQuery(activeFuzzyFrom);
+                    updateUrl({ q: activeFuzzyFrom, brand: null, form: null, type: null, exact: '1', sort: 'relevance' });
                   }}
                   style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--violet)', textDecoration: 'underline', fontSize: 'inherit' }}
                 >
-                  {brandMatch.fuzzyFrom}
+                  {activeFuzzyFrom}
                 </button>
               </div>
             </div>
