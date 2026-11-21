@@ -9,6 +9,8 @@ import type { GroceryCategory } from '@/types';
 import { useCart } from '@/components/Cart';
 import { processSmartList, extractTextFromImage, optimizeBasket, CartOptimizationRequest } from '../actions';
 
+import SearchBar from '@/components/SearchBar';
+
 type Sort = 'relevance' | 'price' | 'unit' | 'discount';
 
 const SAMPLE_LIST = 'coconut 100g\napple 300g\nwatermelon 2kg\ncoriander 100g\n1 dozen eggs\nAmul butter 500g';
@@ -99,10 +101,10 @@ export default function GrocerySearch({
     router.push(`/grocery?${p.toString()}`, { scroll: options?.scroll ?? true });
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    updateUrl({ q: searchQuery.trim(), brand: null, form: null, type: null, exact: null, sort: 'relevance' });
-  };
+  // const handleSearch = (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   updateUrl({ q: searchQuery.trim(), brand: null, form: null, type: null, exact: null, sort: 'relevance' });
+  // };
 
   const sections = searchResults?.sections || [];
   const facets = searchResults?.facets || {};
@@ -362,10 +364,12 @@ export default function GrocerySearch({
           <p className="lead" style={{ marginTop: 14, fontSize: 17 }}>Search an item, or drop your entire list — we compare it across multiple Indian retailers.</p>
           
           <div style={{ marginTop: 28, maxWidth: 760 }}>
-            <form onSubmit={handleSearch} style={{ display: 'flex', gap: 8, width: '100%' }}>
-              <input type="search" placeholder="Search groceries, brands or products…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="input" style={{ flex: 1, padding: '12px 20px', borderRadius: 12, border: '1px solid var(--divider)', fontSize: 16 }} />
-              <button type="submit" className="btn btn--primary" style={{ borderRadius: 12, padding: '0 24px' }}>Search</button>
-            </form>
+            <SearchBar
+              variant="grocery"
+              size="md"
+              initialValue={searchQuery}
+              placeholder="Search groceries, brands or products…"
+            />
           </div>
           
           <div className="row" style={{ marginTop: 16, fontSize: 20 }}>
