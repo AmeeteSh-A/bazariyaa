@@ -1,9 +1,20 @@
 import type { Unit } from '@/types';
-export const inr = (n: number): string => 'AED ' + Math.round(n).toLocaleString('en-AE');
+export const inr = (n: number): string => {
+  const rounded = Math.round(n * 100) / 100;
+  return 'AED ' + rounded.toLocaleString('en-AE', {
+    minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+};
 
-export const money = (n: number, currency: string = 'AED'): string =>
-  currency === 'AED' ? inr(n) : currency + ' ' + Math.round(n).toLocaleString('en-AE');
-
+export const money = (n: number, currency: string = 'AED'): string => {
+  if (currency === 'AED') return inr(n);
+  const rounded = Math.round(n * 100) / 100;
+  return currency + ' ' + rounded.toLocaleString('en-AE', {
+    minimumFractionDigits: Number.isInteger(rounded) ? 0 : 2,
+    maximumFractionDigits: 2,
+  });
+};
 export const discountPct = (price: number, mrp: number): number =>
   mrp > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0;
 

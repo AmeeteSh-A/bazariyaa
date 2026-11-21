@@ -37,6 +37,17 @@ function findBrandVariantIndex(variants: GroceryVariant[], preferredBrand?: stri
   return idx >= 0 ? idx : 0;
 }
 
+function formatUnitPrice(price: number, size: GrocerySize) {
+  const unitPrice = size.size_value > 0 ? price / size.size_value : size.from_unit_price;
+  const decimals = unitPrice >= 1 ? 2 : unitPrice >= 0.01 ? 3 : 4;
+  const formatted = unitPrice
+    .toFixed(decimals)
+    .replace(/(\.\d*?[1-9])0+$/, '$1')
+    .replace(/\.0+$/, '');
+  const currency = inr(0).replace(/0(?:\.0+)?/, formatted);
+  return `${currency}/${size.size_unit}`;
+}
+
 export function GroceryCard({
   p,
   preferredBrand
@@ -49,6 +60,7 @@ export function GroceryCard({
   const [variantIdx, setVariantIdx] = useState(() => findBrandVariantIndex(p.variants, preferredBrand));
   const [sizeIdx, setSizeIdx] = useState(0);
   const [selectedStoreIndex, setSelectedStoreIndex] = useState(0);
+  const [hoveredStoreIndex, setHoveredStoreIndex] = useState<number | null>(null);
 
   useEffect(() => {
     setVariantIdx(findBrandVariantIndex(p.variants, preferredBrand));
@@ -68,10 +80,11 @@ export function GroceryCard({
   });
 
   const currentSize = sortedSizes[sizeIdx] || sortedSizes[0];
-  const dynamicStores = currentSize?.stores || [];
+  const dynamicStores = [...(currentSize?.stores || [])].sort((a, b) => a.price - b.price);
 
   useEffect(() => {
     setSelectedStoreIndex(0);
+    setHoveredStoreIndex(null);
   }, [variantIdx, sizeIdx]);
 
   if (!currentVariant || !currentSize || dynamicStores.length === 0) return null;
@@ -134,9 +147,7 @@ export function GroceryCard({
 
           <div className="row" style={{ marginTop: 12 }}>
             <div className="info info--violet tip" tabIndex={0}>
-              <b>
-                {currentSize.from_unit_price < 1 ? `${inr(currentSize.from_unit_price * 100)}/100${currentSize.size_unit}` : `${inr(currentSize.from_unit_price)}/${currentSize.size_unit}`}
-              </b>
+              <b>{formatUnitPrice(activeStore.price, currentSize)}</b>
               <span>Unit price</span>
             </div>
           </div>
@@ -152,19 +163,48 @@ export function GroceryCard({
         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--green)', marginBottom: 8 }}>
           {dynamicStores.length > 1 ? `COMPARE ${dynamicStores.length} STORES` : 'AVAILABLE AT'}
         </div>
-        <div className="row gcard__stores" style={{ flexWrap: 'nowrap', alignItems: 'stretch' }}>
-          {dynamicStores.slice(0, 4).map((s, i) => {
+        <div className="row gcard__stores" style={{ flexWrap: 'wrap', alignItems: 'stretch', gap: 6, overflow: 'visible' }}>
+          {dynamicStores.map((s, i) => {
             const brand = getStoreBrand(s.name);
             const isSelected = selectedStoreIndex === i;
+            const isHovered = hoveredStoreIndex === i;
             return (
               <div 
                 key={s.url + i} 
-                className={`store tip ${isSelected ? 'store--selected' : ''}`} 
+                className={`store ${isSelected ? 'store--selected' : ''}`} 
                 onClick={() => setSelectedStoreIndex(i)}
+                onMouseEnter={() => setHoveredStoreIndex(i)}
+                onMouseLeave={() => setHoveredStoreIndex(null)}
                 style={{
-                  cursor: 'pointer', border: isSelected ? '2px solid var(--violet)' : '1px solid transparent', background: isSelected ? 'var(--violet-light)' : undefined
+                  position: 'relative',
+                  overflow: 'visible',
+                  cursor: 'pointer',
+                  border: isSelected ? '2px solid var(--violet)' : '1px solid var(--divider)',
+                  background: isSelected ? 'var(--violet-light)' : '#fff'
                 }}
               >
+                {isHovered && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 'calc(100% + 6px)',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      background: '#1F1D1A',
+                      color: '#fff',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: '4px 8px',
+                      borderRadius: 6,
+                      whiteSpace: 'nowrap',
+                      pointerEvents: 'none',
+                      zIndex: 30,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+                    }}
+                  >
+                    {formatUnitPrice(s.price, currentSize)}
+                  </div>
+                )}
                 <div className="row" style={{ gap: 4, justifyContent: 'center', flexWrap: 'nowrap' }}><span className="store__logo" style={{ background: brand.bg }}>{brand.logo}</span><span style={{ fontSize: 10.5, fontWeight: 500, color: '#55504A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span></div>
                 <div className="store__price" style={!s.inStock ? { textDecoration: 'line-through', color: 'var(--faint)' } : {}}>{inr(s.price)}</div>
               </div>
