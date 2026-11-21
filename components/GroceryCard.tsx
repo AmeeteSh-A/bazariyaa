@@ -111,45 +111,43 @@ export function GroceryCard({
   return (
     <article className="card card--hover gcard">
       <div className="gcard__product">
-        <div className="gcard__img">
-          {displayImage ? (
-            <img src={displayImage} alt={p.title} loading="lazy" />
-          ) : (
-            <span className="emoji" aria-hidden="true">🛒</span>
-          )}
-          <button type="button" className={'icon-btn gcard__heart' + (wished ? ' icon-btn--on' : '')} onClick={() => setWished(w => !w)}>
-            <HeartIcon size={16} filled={wished} />
-          </button>
-        </div>
-        
-        <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-          <div className="row">
-            <h3 className="gcard__title" style={{ margin: 0 }}>{p.title}</h3>
-          </div>
-          
-          {p.variants.length > 1 && (
-            <div className="row" style={{ gap: 6, marginTop: 10 }}>
-              {p.variants.map((v, idx) => (
-                <button key={`${v.brand}-${v.variant}-${v.form}`} type="button" className="chip chip--soft" aria-pressed={idx === variantIdx} onClick={() => { setVariantIdx(idx); setSizeIdx(0); }} style={{ padding: '4px 10px', fontSize: 12 }}>
-                  {v.variant_label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <div className="row" style={{ gap: 6, marginTop: p.variants.length > 1 ? 8 : 10 }}>
-            {sortedSizes.map((s, idx) => (
-              <button key={s.sizeKey} type="button" className="variant" aria-pressed={idx === sizeIdx} onClick={() => setSizeIdx(idx)}>
-                {formatNormalizedUnit(s.size_value, s.size_unit)}
-              </button>
-            ))}
-          </div>
-
-          <div className="row" style={{ marginTop: 12 }}>
-            <div className="info info--violet tip" tabIndex={0}>
-              <b>{formatUnitPrice(activeStore.price, currentSize)}</b>
-              <span>Unit price</span>
-            </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+          <a
+            href={activeStore.url || '#'}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 4,
+              padding: '4px 8px',
+              fontSize: 11,
+              fontWeight: 600,
+              lineHeight: 1.2,
+              textDecoration: 'none',
+              color: 'var(--violet)',
+              background: '#F3F0FE',
+              border: '1px solid rgba(94, 53, 177, 0.16)',
+              borderRadius: 7,
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <span>Go to product page</span>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 12h14" />
+              <path d="m12 5 7 7-7 7" />
+            </svg>
+          </a>
+          <div className="gcard__img">
+            {displayImage ? (
+              <img src={displayImage} alt={p.title} loading="lazy" />
+            ) : (
+              <span className="emoji" aria-hidden="true">🛒</span>
+            )}
+            <button type="button" className={'icon-btn gcard__heart' + (wished ? ' icon-btn--on' : '')} onClick={() => setWished(w => !w)}>
+              <HeartIcon size={16} filled={wished} />
+            </button>
           </div>
         </div>
       </div>
