@@ -163,7 +163,16 @@ export function GroceryCard({
         <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--green)', marginBottom: 8 }}>
           {dynamicStores.length > 1 ? `COMPARE ${dynamicStores.length} STORES` : 'AVAILABLE AT'}
         </div>
-        <div className="row gcard__stores" style={{ flexWrap: 'wrap', alignItems: 'stretch', gap: 6, overflow: 'visible' }}>
+        <div
+          className="gcard__stores"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 6,
+            alignItems: 'stretch',
+            overflow: 'visible'
+          }}
+        >
           {dynamicStores.map((s, i) => {
             const brand = getStoreBrand(s.name);
             const isSelected = selectedStoreIndex === i;
@@ -177,6 +186,9 @@ export function GroceryCard({
                 onMouseLeave={() => setHoveredStoreIndex(null)}
                 style={{
                   position: 'relative',
+                  minWidth: 0,
+                  width: '100%',
+                  boxSizing: 'border-box',
                   overflow: 'visible',
                   cursor: 'pointer',
                   border: isSelected ? '2px solid var(--violet)' : '1px solid var(--divider)',
@@ -205,7 +217,10 @@ export function GroceryCard({
                     {formatUnitPrice(s.price, currentSize)}
                   </div>
                 )}
-                <div className="row" style={{ gap: 4, justifyContent: 'center', flexWrap: 'nowrap' }}><span className="store__logo" style={{ background: brand.bg }}>{brand.logo}</span><span style={{ fontSize: 10.5, fontWeight: 500, color: '#55504A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span></div>
+                <div className="row" style={{ gap: 4, justifyContent: 'center', flexWrap: 'nowrap', minWidth: 0 }}>
+                  <span className="store__logo" style={{ background: brand.bg, flexShrink: 0 }}>{brand.logo}</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 500, color: '#55504A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.name}</span>
+                </div>
                 <div className="store__price" style={!s.inStock ? { textDecoration: 'line-through', color: 'var(--faint)' } : {}}>{inr(s.price)}</div>
               </div>
             );
